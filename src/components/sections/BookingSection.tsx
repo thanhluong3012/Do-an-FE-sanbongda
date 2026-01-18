@@ -22,6 +22,8 @@ const timeSlots = [
   { time: "21:00", available: true },
 ];
 
+
+
 const days = [
   { date: "08", day: "T2", isToday: true },
   { date: "09", day: "T3", isToday: false },

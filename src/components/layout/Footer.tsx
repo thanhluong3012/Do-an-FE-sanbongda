@@ -1,4 +1,4 @@
-import { MapPin, Phone, Mail, Facebook, Youtube, Instagram } from "lucide-react";
+import { MapPin, Phone, Mail, Facebook, Youtube, Instagram} from "lucide-react";
 
 const Footer = () => {
   return (
@@ -14,7 +14,7 @@ const Footer = () => {
                 </span>
               </div>
               <span className="font-display font-bold text-xl">
-                SânBóng<span className="text-primary">Pro</span>
+                TM ARENA<span className="text-primary"></span>
               </span>
             </div>
             <p className="text-secondary-foreground/70 mb-6">
@@ -97,7 +97,7 @@ const Footer = () => {
               <li className="flex items-center gap-3">
                 <Mail className="text-primary" size={18} />
                 <span className="text-secondary-foreground/70">
-                  support@sanbongpro.vn
+                  support@tmarena.vn
                 </span>
               </li>
             </ul>
@@ -107,7 +107,7 @@ const Footer = () => {
         {/* Bottom Bar */}
         <div className="border-t border-secondary-foreground/10 mt-12 pt-8 text-center">
           <p className="text-secondary-foreground/50 text-sm">
-            © 2026 SânBóngPro. Tất cả quyền được bảo lưu.
+            © 2026 TM ARENA. Tất cả quyền được bảo lưu.
           </p>
         </div>
       </div>

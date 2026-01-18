@@ -37,7 +37,7 @@ const Header = () => {
               <span className="text-primary-foreground font-bold text-lg">⚽</span>
             </div>
             <span className="font-display font-bold text-xl text-foreground">
-              SânBóng<span className="text-primary">Pro</span>
+              <span className="text-primary">TM ARENA</span>
             </span>
           </Link>
 
