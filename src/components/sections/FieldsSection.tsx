@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Link } from "react-router-dom";
 
 const fields = [
   {
@@ -78,20 +79,20 @@ const FieldsSection = () => {
         {/* Fields Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {fields.map((field, index) => (
-            <Card
-              key={field.id}
-              variant="field"
-              className="group animate-fade-in"
-              style={{ animationDelay: `${index * 100}ms` }}
-            >
-              {/* Image */}
-              <div className="relative h-48 overflow-hidden">
-                <img
-                  src={field.image}
-                  alt={field.name}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-secondary/80 to-transparent" />
+            <Link to={`/field/${field.id}`} key={field.id}>
+              <Card
+                variant="field"
+                className="group animate-fade-in cursor-pointer hover:shadow-xl transition-shadow"
+                style={{ animationDelay: `${index * 100}ms` }}
+              >
+                {/* Image */}
+                <div className="relative h-48 overflow-hidden">
+                  <img
+                    src={field.image}
+                    alt={field.name}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-secondary/80 to-transparent" />
 
                 {/* Badges */}
                 <div className="absolute top-3 left-3 flex gap-2">
@@ -152,18 +153,26 @@ const FieldsSection = () => {
                   </span>
                   <span className="text-muted-foreground text-sm">/giờ</span>
                 </div>
-                <Button size="sm" disabled={!field.available}>
+                <Button 
+                  size="sm" 
+                  disabled={!field.available}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.location.href = `/booking?field=${field.id}`;
+                  }}
+                >
                   Đặt ngay
                 </Button>
               </CardFooter>
             </Card>
+            </Link>
           ))}
         </div>
 
         {/* View All Button */}
         <div className="text-center mt-12">
-          <Button variant="outline" size="lg">
-            Xem tất cả sân bóng
+          <Button variant="outline" size="lg" asChild>
+            <Link to="/fields">Xem tất cả sân bóng</Link>
           </Button>
         </div>
       </div>

@@ -8,6 +8,11 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Booking from "./pages/Booking";
+import Fields from "./pages/Fields";
+import FieldDetail from "./pages/FieldDetail";
+import Tournament from "./pages/Tournament";
+import Tournaments from "./pages/Tournaments";
+import TournamentDetail from "./pages/TournamentDetail";
 import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
@@ -28,6 +33,11 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/booking" element={<Booking />} />
+            <Route path="/fields" element={<Fields />} />
+            <Route path="/field/:id" element={<FieldDetail />} />
+            <Route path="/tournaments" element={<Tournaments />} />
+            <Route path="/tournament/create" element={<Tournament />} />
+            <Route path="/tournament/:id" element={<TournamentDetail />} />
             
             {/* Admin Routes - Protected */}
             <Route 

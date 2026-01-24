@@ -1,6 +1,19 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import api from '@/lib/axios';
+
+// Định nghĩa kiểu dữ liệu cho User và Session
+interface User {
+  id: string;
+  email: string;
+  name?: string;
+  [key: string]: any;
+}
+
+interface Session {
+  access_token: string;
+  refresh_token?: string;
+  user: User;
+}
 
 interface AuthContextType {
   user: User | null;
@@ -19,51 +32,94 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
+    // Kiểm tra session từ localStorage khi component mount
+    const checkAuth = async () => {
+      const token = localStorage.getItem('access_token');
+      const storedUser = localStorage.getItem('user');
+      
+      if (token && storedUser) {
+        try {
+          // Parse stored user và set state
+          const parsedUser = JSON.parse(storedUser);
+          setUser(parsedUser);
+          setSession({ access_token: token, user: parsedUser });
+        } catch (error) {
+          // Không parse được localStorage, xóa dữ liệu
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('user');
+          setUser(null);
+          setSession(null);
+        }
       }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
       setLoading(false);
-    });
+    };
 
-    return () => subscription.unsubscribe();
+    checkAuth();
   }, []);
 
-  const signUp = async (email: string, password: string, fullName: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
+const signUp = async (email: string, password: string, fullName: string) => {
+  try {
+    await api.post('/auth/register', {
+      name: fullName,
       email,
       password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
-        },
-      },
     });
-    return { error };
-  };
+
+    return { error: null };
+  } catch (error: any) {
+    return { error: new Error(error.response?.data?.message || 'Đăng ký thất bại') };
+  }
+};
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return { error };
+    try {
+      const response = await api.post('/auth/login', {
+        email,
+        password,
+      });
+      
+      // API trả về: { success, message, data: { user, access_token, ... } }
+      const responseData = response.data.data || response.data;
+      
+      // Extract token từ đúng vị trí
+      const token = responseData.access_token || responseData.token || response.data.access_token || response.data.token;
+      
+      // Extract user data từ đúng vị trí
+      let userData = responseData.user || response.data.user || responseData;
+      
+      // Nếu userData vẫn chứa access_token, nghĩa là chưa đúng, cần lấy nested user
+      if (userData.access_token && userData.user) {
+        userData = userData.user;
+      }
+      
+      // Lưu token và user vào localStorage
+      if (token && userData && userData.email) {
+        localStorage.setItem('access_token', token);
+        localStorage.setItem('user', JSON.stringify(userData));
+        
+        // Set state
+        setUser(userData);
+        setSession({ access_token: token, user: userData });
+      }
+      
+      return { error: null };
+    } catch (error: any) {
+      return { error: new Error(error.response?.data?.message || 'Đăng nhập thất bại') };
+    }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await api.post('/auth/logout');
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      // Xóa token và user khỏi localStorage
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user');
+      setUser(null);
+      setSession(null);
+    }
   };
 
   return (

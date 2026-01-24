@@ -76,6 +76,7 @@ const Auth = () => {
         title: 'Thành công',
         description: 'Đăng nhập thành công!',
       });
+      // useEffect sẽ tự động chuyển hướng khi user state được cập nhật
     }
   };
 
@@ -123,8 +124,9 @@ const Auth = () => {
     } else {
       toast({
         title: 'Thành công',
-        description: 'Đăng ký thành công! Đang chuyển hướng...',
+        description: 'Đăng ký thành công! Vui lòng đăng nhập.',
       });
+      // Không navigate, để user tự chuyển sang tab đăng nhập
     }
   };
 

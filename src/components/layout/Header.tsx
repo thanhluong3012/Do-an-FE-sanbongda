@@ -17,9 +17,9 @@ const Header = () => {
   const navigate = useNavigate();
 
   const navLinks = [
-    { name: "Tìm sân", href: "#fields", icon: MapPin },
+    { name: "Tìm sân", href: "/fields", icon: MapPin, isRoute: true },
     { name: "Đặt lịch", href: "/booking", icon: Calendar, isRoute: true },
-    { name: "Lịch thi đấu", href: "#matches", icon: Trophy },
+    { name: "Giải đấu", href: "/tournaments", icon: Trophy, isRoute: true },
   ];
 
   const handleSignOut = async () => {
@@ -73,7 +73,7 @@ const Header = () => {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="gap-2">
                     <User size={18} />
-                    {user.user_metadata?.full_name || user.email?.split('@')[0]}
+                    {user.name}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
