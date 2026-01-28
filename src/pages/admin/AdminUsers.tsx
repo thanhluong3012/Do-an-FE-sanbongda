@@ -40,6 +40,8 @@ interface User {
   name: string;
   email: string;
   role?: string;
+  role_id?: number;
+  role_name?: string;
   status?: string;
   created_at: string;
   updated_at: string;
@@ -50,6 +52,7 @@ const AdminUsers = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const [users, setUsers] = useState<any[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -68,19 +71,37 @@ const AdminUsers = () => {
     try {
       setLoading(true);
       setError(null);
+      
+      // Fetch roles trước
+      const rolesRes = await api.get('/roles');
+      const rolesData = rolesRes.data.data || rolesRes.data;
+      console.log('Roles data:', rolesData);
+      setRoles(rolesData);
+      
+      // Fetch users
       const res = await api.get('/users');
       console.log('dữ liệu res: ', res);
 
       const usersData =  res.data.data;
+      console.log('usersData:', usersData);
+      console.log('User đầu tiên:', usersData[0]);
       
       // Format data
-      const formattedUsers = usersData.map((user: any) => ({
-        ...user,
-        role: user.role || 'user',
-        status: user.status || 'active',
-        joinDate: user.created_at ? new Date(user.created_at).toLocaleDateString('vi-VN') : 'N/A',
-        bookings: user.bookings || 0,
-      }));
+      const formattedUsers = usersData.map((user: any) => {
+        
+        // Tìm role name từ role_id
+        const userRole = rolesData.find((r: any) => r.id === user.role_id);
+        const roleName = userRole?.name || 'User';
+      
+        return {
+          ...user,
+          role: user.role || roleName.toLowerCase(),
+          role_name: roleName,
+          status: user.status || 'active',
+          joinDate: user.created_at ? new Date(user.created_at).toLocaleDateString('vi-VN') : 'N/A',
+          bookings: user.bookings || 0,
+        };
+      });
       
       setUsers(formattedUsers);
 
@@ -186,10 +207,18 @@ const AdminUsers = () => {
     }
   };
 
-  const getRoleBadge = (role: string) => {
-    return role === 'admin' 
-      ? <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">Admin</Badge>
-      : <Badge variant="secondary">User</Badge>;
+  const getRoleBadge = (roleName: string) => {
+    // Lấy màu badge dựa trên tên role
+    const roleConfig: { [key: string]: { className: string; label: string } } = {
+      'superadmin': { className: 'bg-purple-100 text-purple-800 hover:bg-purple-100', label: 'SuperAdmin' },
+      'admin': { className: 'bg-blue-100 text-blue-800 hover:bg-blue-100', label: 'Admin' },
+      'user': { className: 'bg-green-100 text-green-800 hover:bg-green-100', label: 'User' },
+    };
+
+    const normalizedRole = roleName.toLowerCase();
+    const config = roleConfig[normalizedRole] || { className: 'bg-gray-100 text-gray-800 hover:bg-gray-100', label: roleName };
+    
+    return <Badge className={config.className}>{config.label}</Badge>;
   };
 
 
@@ -313,7 +342,7 @@ const AdminUsers = () => {
                           {user.email}
                         </div>
                       </td>
-                      <td className="py-3 px-4">{getRoleBadge(user.role)}</td>
+                      <td className="py-3 px-4">{getRoleBadge(user.role_name || user.role)}</td>
                       <td className="py-3 px-4">{getStatusBadge(user.status)}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2 text-sm text-gray-600">

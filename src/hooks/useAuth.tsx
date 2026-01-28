@@ -94,6 +94,8 @@ const signUp = async (email: string, password: string, fullName: string) => {
       
       // Lưu token và user vào localStorage
       if (token && userData && userData.email) {
+        // Đảm bảo lưu đầy đủ thông tin user bao gồm role_id
+        console.log('User data khi login:', userData);
         localStorage.setItem('access_token', token);
         localStorage.setItem('user', JSON.stringify(userData));
         
