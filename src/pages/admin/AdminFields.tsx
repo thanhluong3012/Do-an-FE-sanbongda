@@ -3,65 +3,54 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Search, Plus, Edit, Trash2, MapPin, Star } from 'lucide-react';
-import { useState } from 'react';
+import { Search, Plus, Edit, Trash2, MapPin, Star, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { FieldFormDialog, type FieldFormData } from '@/components/FieldFormDialog';
+import { useToast } from '@/hooks/use-toast';
+import api from '@/lib/axios';
+
+interface Field {
+  id: number;
+  name: string;
+  type: string;
+  location: string;
+  price: string;
+  image?: string;
+  description?: string;
+  status: 'available' | 'maintenance' | 'unavailable';
+  rating?: number;
+  bookings?: number;
+}
 
 const AdminFields = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingField, setEditingField] = useState<any>(null);
+  const [fields, setFields] = useState<Field[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
-  // Dữ liệu tĩnh demo - sau này sẽ thay bằng API
-  const fields = [
-    {
-      id: 1,
-      name: 'Sân A1',
-      type: 'Sân 5 người',
-      location: 'Quận 1, TP.HCM',
-      price: '500.000đ/2h',
-      status: 'available',
-      rating: 4.5,
-      bookings: 45,
-    },
-    {
-      id: 2,
-      name: 'Sân B2',
-      type: 'Sân 7 người',
-      location: 'Quận 2, TP.HCM',
-      price: '700.000đ/2h',
-      status: 'available',
-      rating: 4.8,
-      bookings: 62,
-    },
-    {
-      id: 3,
-      name: 'Sân C3',
-      type: 'Sân 11 người',
-      location: 'Quận 3, TP.HCM',
-      price: '1.000.000đ/2h',
-      status: 'maintenance',
-      rating: 4.3,
-      bookings: 38,
-    },
-    {
-      id: 4,
-      name: 'Sân A2',
-      type: 'Sân 5 người',
-      location: 'Quận 1, TP.HCM',
-      price: '500.000đ/2h',
-      status: 'available',
-      rating: 4.6,
-      bookings: 51,
-    },
-    {
-      id: 5,
-      name: 'Sân B1',
-      type: 'Sân 7 người',
-      location: 'Quận 4, TP.HCM',
-      price: '650.000đ/2h',
-      status: 'unavailable',
-      rating: 4.2,
-      bookings: 29,
-    },
-  ];
+  // Fetch danh sách sân từ API
+  useEffect(() => {
+    fetchFields();
+  }, []);
+
+  const fetchFields = async () => {
+    try {
+      setIsLoading(true);
+      const response = await api.get('/fields');
+      setFields(response.data.data || response.data);
+    } catch (error: any) {
+      console.error('Fetch fields error:', error);
+      toast({
+        title: 'Lỗi!',
+        description: error.response?.data?.message || 'Không thể tải danh sách sân',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -76,11 +65,89 @@ const AdminFields = () => {
     }
   };
 
+  const formatPrice = (price: string | number) => {
+    const priceNum = typeof price === 'string' ? parseFloat(price) : price;
+    return new Intl.NumberFormat('vi-VN', { 
+      style: 'currency', 
+      currency: 'VND' 
+    }).format(priceNum);
+  };
+
   const filteredFields = fields.filter(field => 
     field.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     field.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
     field.location.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+
+  //Thêm
+  const handleCreateField = async (data: FieldFormData) => {
+    try {
+      await api.post('/fields', data);
+      toast({
+        title: 'Thành công!',
+        description: 'Đã thêm sân mới',
+      });
+      fetchFields();
+    } catch (error: any) {
+      console.error('Create field error:', error);
+      toast({
+        title: 'Lỗi!',
+        description: error.response?.data?.message || 'Không thể thêm sân',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  //Update
+  const handleEditField = async (data: FieldFormData) => {
+    try {
+      await api.put(`/fields/${editingField.id}`, data);
+      toast({
+        title: 'Thành công!',
+        description: 'Đã cập nhật sân',
+      });
+      fetchFields();
+    } catch (error: any) {
+      console.error('Update field error:', error);
+      toast({
+        title: 'Lỗi!',
+        description: error.response?.data?.message || 'Không thể cập nhật sân',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  //Delete
+  const handleDeleteField = async (id: number) => {
+    if (!confirm('Bạn có chắc muốn xóa sân này?')) return;
+    
+    try {
+      await api.delete(`/fields/${id}`);
+      toast({
+        title: 'Thành công!',
+        description: 'Đã xóa sân',
+      });
+      fetchFields();
+    } catch (error: any) {
+      console.error('Delete field error:', error);
+      toast({
+        title: 'Lỗi!',
+        description: error.response?.data?.message || 'Không thể xóa sân',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const openCreateDialog = () => {
+    setEditingField(null);
+    setIsDialogOpen(true);
+  };
+
+  const openEditDialog = (field: any) => {
+    setEditingField(field);
+    setIsDialogOpen(true);
+  };
 
   return (
     <AdminLayout>
@@ -91,7 +158,7 @@ const AdminFields = () => {
             <h1 className="text-3xl font-bold text-gray-900">Quản lý Sân</h1>
             <p className="text-gray-500 mt-1">Quản lý tất cả sân bóng trong hệ thống</p>
           </div>
-          <Button className="flex items-center gap-2">
+          <Button className="flex items-center gap-2" onClick={openCreateDialog}>
             <Plus className="h-4 w-4" />
             Thêm Sân Mới
           </Button>
@@ -123,61 +190,91 @@ const AdminFields = () => {
             <CardDescription>Tổng quan tất cả sân bóng</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">ID</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Tên Sân</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Loại</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Địa điểm</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Giá</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Đánh giá</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Bookings</th>
-                    <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Trạng thái</th>
-                    <th className="text-right py-3 px-4 font-semibold text-sm text-gray-600">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredFields.map((field) => (
-                    <tr key={field.id} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-4 text-sm font-medium">#{field.id}</td>
-                      <td className="py-3 px-4">
-                        <span className="font-semibold text-sm text-blue-600">{field.name}</span>
-                      </td>
-                      <td className="py-3 px-4 text-sm">{field.type}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <MapPin className="h-4 w-4" />
-                          {field.location}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-sm font-semibold">{field.price}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                          <span className="text-sm font-semibold">{field.rating}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-sm">{field.bookings}</td>
-                      <td className="py-3 px-4">{getStatusBadge(field.status)}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-600 hover:text-red-700">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <span className="ml-3 text-gray-500">Đang tải...</span>
+              </div>
+            ) : filteredFields.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                Không có sân nào
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">ID</th>
+                      <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Tên Sân</th>
+                      <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Loại</th>
+                      <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Địa điểm</th>
+                      <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Giá</th>
+                      <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Đánh giá</th>
+                      <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Bookings</th>
+                      <th className="text-left py-3 px-4 font-semibold text-sm text-gray-600">Trạng thái</th>
+                      <th className="text-right py-3 px-4 font-semibold text-sm text-gray-600">Thao tác</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filteredFields.map((field) => (
+                      <tr key={field.id} className="border-b hover:bg-gray-50">
+                        <td className="py-3 px-4 text-sm font-medium">#{field.id}</td>
+                        <td className="py-3 px-4">
+                          <span className="font-semibold text-sm text-blue-600">{field.name}</span>
+                        </td>
+                        <td className="py-3 px-4 text-sm">{field.type}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <MapPin className="h-4 w-4" />
+                            {field.location}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-sm font-semibold">{formatPrice(field.price)}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1">
+                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                            <span className="text-sm font-semibold">{field.rating}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-sm">{field.bookings}</td>
+                        <td className="py-3 px-4">{getStatusBadge(field.status)}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="h-8 w-8 p-0"
+                              onClick={() => openEditDialog(field)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                              onClick={() => handleDeleteField(field.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Dialog Form */}
+        <FieldFormDialog
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          onSubmit={editingField ? handleEditField : handleCreateField}
+          initialData={editingField}
+          mode={editingField ? 'edit' : 'create'}
+        />
       </div>
     </AdminLayout>
   );

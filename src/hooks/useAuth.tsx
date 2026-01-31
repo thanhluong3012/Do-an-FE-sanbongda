@@ -79,8 +79,8 @@ const signUp = async (email: string, password: string, fullName: string) => {
       });
       
       // API trả về: { success, message, data: { user, access_token, ... } }
-      const responseData = response.data.data || response.data;
-      
+      const responseData = response.data.data ;
+  
       // Extract token từ đúng vị trí
       const token = responseData.access_token || responseData.token || response.data.access_token || response.data.token;
       
