@@ -19,7 +19,7 @@ const mockField = {
   type: '5v5',
   price: 300000,
   rating: 4.8,
-  reviews: 124,
+  reviewCount: 124,
   images: [
     'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=1200',
     'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=1200',

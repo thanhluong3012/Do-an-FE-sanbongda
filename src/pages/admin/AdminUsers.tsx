@@ -50,6 +50,7 @@ interface User {
 
 const AdminUsers = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedRole, setSelectedRole] = useState<string>('all');
 
   const [users, setUsers] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
@@ -89,9 +90,9 @@ const AdminUsers = () => {
       // Format data
       const formattedUsers = usersData.map((user: any) => {
         
-        // Tìm role name từ role_id
+        // Tìm role name từ role_id (API trả về name_role, không phải name)
         const userRole = rolesData.find((r: any) => r.id === user.role_id);
-        const roleName = userRole?.name || 'User';
+        const roleName = userRole?.name_role || 'Member';
       
         return {
           ...user,
@@ -208,11 +209,12 @@ const AdminUsers = () => {
   };
 
   const getRoleBadge = (roleName: string) => {
-    // Lấy màu badge dựa trên tên role
+    // Lấy màu badge dựa trên name_role từ API (Admin=1, Owner=2, Staff=3, Member=4)
     const roleConfig: { [key: string]: { className: string; label: string } } = {
-      'superadmin': { className: 'bg-purple-100 text-purple-800 hover:bg-purple-100', label: 'SuperAdmin' },
-      'admin': { className: 'bg-blue-100 text-blue-800 hover:bg-blue-100', label: 'Admin' },
-      'user': { className: 'bg-green-100 text-green-800 hover:bg-green-100', label: 'User' },
+      'admin': { className: 'bg-purple-100 text-purple-800 hover:bg-purple-100', label: 'Quản trị viên' },
+      'owner': { className: 'bg-blue-100 text-blue-800 hover:bg-blue-100', label: 'Chủ sân' },
+      'staff': { className: 'bg-orange-100 text-orange-800 hover:bg-orange-100', label: 'Nhân viên' },
+      'member': { className: 'bg-green-100 text-green-800 hover:bg-green-100', label: 'Thành viên' },
     };
 
     const normalizedRole = roleName.toLowerCase();
@@ -229,10 +231,14 @@ const AdminUsers = () => {
   };
 
   // Lọc users
-  const filteredUsers = users.filter((user: any) => 
-    user.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = users.filter((user: any) => {
+    const matchesSearch = user.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesRole = selectedRole === 'all' || user.role_id?.toString() === selectedRole;
+    
+    return matchesSearch && matchesRole;
+  });
 
   return (
     <AdminLayout>
@@ -259,7 +265,7 @@ const AdminUsers = () => {
           </div>
         </div>
 
-        {/* Search*/}
+        {/* Search and Filter*/}
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -273,7 +279,18 @@ const AdminUsers = () => {
                   disabled={loading}
                 />
               </div>
-              <Button variant="outline" disabled={loading}>Lọc</Button>
+              <Select value={selectedRole} onValueChange={setSelectedRole} disabled={loading}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Lọc theo vai trò" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả vai trò</SelectItem>
+                  <SelectItem value="1">Quản trị viên</SelectItem>
+                  <SelectItem value="2">Chủ sân</SelectItem>
+                  <SelectItem value="3">Nhân viên</SelectItem>
+                  <SelectItem value="4">Thành viên</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>
@@ -306,8 +323,13 @@ const AdminUsers = () => {
         {!loading && !error && (
         <Card>
           <CardHeader>
-            <CardTitle>Danh sách Users ({filteredUsers.length})</CardTitle>
-            <CardDescription>Tổng quan tất cả người dùng đã đăng ký</CardDescription>
+            <CardTitle>Danh sách Users ({filteredUsers.length}/{users.length})</CardTitle>
+            <CardDescription>
+              {filteredUsers.length === users.length 
+                ? 'Tổng quan tất cả người dùng đã đăng ký' 
+                : `Hiển thị ${filteredUsers.length} trong ${users.length} người dùng`
+              }
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">

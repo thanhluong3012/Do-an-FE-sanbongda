@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, ROLES } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Menu, X, MapPin, Calendar, Trophy, User, LogOut } from "lucide-react";
+import { Menu, X, MapPin, Calendar, Trophy, User, LogOut, Building2, LayoutDashboard } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,19 +13,31 @@ import {
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin, isOwner, isStaff } = useAuth();
   const navigate = useNavigate();
 
   const navLinks = [
     { name: "Tìm sân", href: "/fields", icon: MapPin, isRoute: true },
     { name: "Đặt lịch", href: "/booking", icon: Calendar, isRoute: true },
     { name: "Giải đấu", href: "/tournaments", icon: Trophy, isRoute: true },
+    { name: "Dành cho chủ sân", href: "/register/field-owner", icon: Building2, isRoute: true, highlight: true },
   ];
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
   };
+
+  // Lấy link dashboard dựa trên role
+  const getDashboardLink = () => {
+    if (isAdmin()) return '/admin/dashboard';
+    if (isOwner()) return '/owner/dashboard';
+    if (isStaff()) return '/staff/dashboard';
+    return null;
+  };
+
+  const dashboardLink = getDashboardLink();
+  const roleName = isAdmin() ? 'Admin' : isOwner() ? 'Chủ sân' : isStaff() ? 'Nhân viên' : 'User';
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">
@@ -48,7 +60,11 @@ const Header = () => {
                 <Link
                   key={link.name}
                   to={link.href}
-                  className="flex items-center gap-2 px-4 py-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all duration-200"
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+                    link.highlight
+                      ? "bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
                 >
                   <link.icon size={18} />
                   <span className="font-medium">{link.name}</span>
@@ -73,14 +89,28 @@ const Header = () => {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="gap-2">
                     <User size={18} />
-                    {user.name}
+                    {user.name || user.email}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem className="text-muted-foreground">
                     {user.email}
                   </DropdownMenuItem>
+                  <DropdownMenuItem className="text-xs text-muted-foreground">
+                    Vai trò: {roleName}
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  {dashboardLink && (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link to={dashboardLink} className="cursor-pointer">
+                          <LayoutDashboard className="w-4 h-4 mr-2" />
+                          Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                   <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
                     <LogOut className="w-4 h-4 mr-2" />
                     Đăng xuất
@@ -116,15 +146,29 @@ const Header = () => {
         {isMenuOpen && (
           <div className="md:hidden py-4 border-t border-border/50 animate-fade-in">
             <nav className="flex flex-col gap-2">
+              {dashboardLink && user && (
+                <Link
+                  to={dashboardLink}
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 transition-colors"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <LayoutDashboard size={20} />
+                  <span className="font-medium">Dashboard {roleName}</span>
+                </Link>
+              )}
               {navLinks.map((link) =>
                 link.isRoute ? (
                   <Link
                     key={link.name}
                     to={link.href}
-                    className="flex items-center gap-3 px-4 py-3 text-foreground hover:bg-muted rounded-lg transition-colors"
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                      link.highlight
+                        ? "bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20"
+                        : "text-foreground hover:bg-muted"
+                    }`}
                     onClick={() => setIsMenuOpen(false)}
                   >
-                    <link.icon size={20} className="text-primary" />
+                    <link.icon size={20} className={link.highlight ? "text-primary" : "text-primary"} />
                     <span className="font-medium">{link.name}</span>
                   </Link>
                 ) : (

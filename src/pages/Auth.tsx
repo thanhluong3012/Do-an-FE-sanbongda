@@ -297,11 +297,18 @@ const Auth = () => {
           </Tabs>
         </Card>
 
-        <p className="text-center text-sm text-muted-foreground mt-6">
+        <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground mt-6">
           <a href="/" className="hover:text-primary transition-colors">
             ← Quay về trang chủ
           </a>
-        </p>
+          <div className="h-px w-full max-w-[200px] bg-border my-2"></div>
+          <p className="text-center">
+            Bạn là chủ sân bóng?{' '}
+            <a href="/register/field-owner" className="text-primary hover:underline font-medium">
+              Đăng ký tại đây
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );

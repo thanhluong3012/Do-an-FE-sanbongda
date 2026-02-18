@@ -1,35 +1,31 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth, ROLES } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
 interface ProtectedRouteProps {
   children: ReactNode;
-  requireAdmin?: boolean;
+  requiredRole?: number; // 1: Admin, 2: Owner, 3: Staff, 4: Member
 }
 
-const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps) => {
+const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
   const { user, loading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Kiểm tra quyền admin
-  const isAdmin = user && (
-    user.role_id === 2 || 
-    user.role_id === 3 ||
-    user.role === 'admin' || 
-    user.role === 'superadmin' ||
-    user.role?.toLowerCase() === 'admin' ||
-    user.role?.toLowerCase() === 'superadmin'
-  );
+  // Lấy role_id của user
+  const userRoleId = user?.role_id || user?.role?.id;
+
+  // Kiểm tra quyền truy cập
+  const hasAccess = !requiredRole || userRoleId === requiredRole;
 
   // useEffect để hiển thị toast và redirect khi không có quyền
   useEffect(() => {
-    if (!loading && user && requireAdmin && !isAdmin) {
+    if (!loading && user && requiredRole && !hasAccess) {
       toast({
         title: '❌ Không có quyền truy cập',
-        description: 'Bạn không có quyền truy cập vào trang quản trị. Đang chuyển về trang chủ...',
+        description: 'Bạn không có quyền truy cập vào trang này. Đang chuyển về trang chủ...',
         variant: 'destructive',
       });
       
@@ -39,7 +35,7 @@ const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps)
       
       return () => clearTimeout(timer);
     }
-  }, [loading, user, requireAdmin, isAdmin, toast, navigate]);
+  }, [loading, user, requiredRole, hasAccess, toast, navigate]);
 
   // Hiển thị loading khi đang kiểm tra authentication
   if (loading) {
@@ -55,8 +51,8 @@ const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps)
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  // Nếu yêu cầu admin nhưng không phải admin
-  if (requireAdmin && !isAdmin) {
+  // Nếu yêu cầu role cụ thể nhưng không có quyền
+  if (requiredRole && !hasAccess) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">

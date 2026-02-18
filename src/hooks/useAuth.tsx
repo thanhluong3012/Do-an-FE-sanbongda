@@ -6,8 +6,22 @@ interface User {
   id: string;
   email: string;
   name?: string;
+  role_id?: number;
+  role?: {
+    id: number;
+    name_role: string;
+    description?: string;
+  };
   [key: string]: any;
 }
+
+// Role constants
+export const ROLES = {
+  ADMIN: 1,
+  OWNER: 2,
+  STAFF: 3,
+  MEMBER: 4,
+} as const;
 
 interface Session {
   access_token: string;
@@ -22,6 +36,11 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  isAdmin: () => boolean;
+  isOwner: () => boolean;
+  isStaff: () => boolean;
+  isMember: () => boolean;
+  hasRole: (roleId: number) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -124,8 +143,30 @@ const signUp = async (email: string, password: string, fullName: string) => {
     }
   };
 
+  // Role checking functions
+  const hasRole = (roleId: number): boolean => {
+    return user?.role_id === roleId || user?.role?.id === roleId;
+  };
+
+  const isAdmin = (): boolean => hasRole(ROLES.ADMIN);
+  const isOwner = (): boolean => hasRole(ROLES.OWNER);
+  const isStaff = (): boolean => hasRole(ROLES.STAFF);
+  const isMember = (): boolean => hasRole(ROLES.MEMBER);
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      session, 
+      loading, 
+      signUp, 
+      signIn, 
+      signOut,
+      isAdmin,
+      isOwner,
+      isStaff,
+      isMember,
+      hasRole,
+    }}>
       {children}
     </AuthContext.Provider>
   );

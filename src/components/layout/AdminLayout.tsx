@@ -4,9 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { 
   LayoutDashboard, 
   Users, 
-  Calendar, 
-  MapPin, 
-  Settings,
+  CheckCircle,
   LogOut,
   Menu,
   X
@@ -25,11 +23,9 @@ const AdminLayout = ({ children }: AdminLayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const menuItems = [
-    { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/admin/users', icon: Users, label: 'Quản lý Users' },
-    { path: '/admin/bookings', icon: Calendar, label: 'Quản lý Bookings' },
-    { path: '/admin/fields', icon: MapPin, label: 'Quản lý Sân' },
-    { path: '/admin/settings', icon: Settings, label: 'Cài đặt' },
+    { path: '/admin/owner-approvals', icon: CheckCircle, label: 'Phê duyệt Chủ Sân' },
   ];
 
   const handleSignOut = async () => {
