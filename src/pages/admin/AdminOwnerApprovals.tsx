@@ -4,7 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import api from '@/lib/axios';
+import {
+  type OwnerRegistration,
+  getOwnerRegistrations,
+  getOwnerRegistration,
+  approveOwnerRegistration,
+  rejectOwnerRegistration,
+  deleteOwnerRegistration,
+} from '@/services/ownerRegistrationService';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -16,15 +24,24 @@ import { CheckCircle, XCircle, Eye, Phone, Mail, Building2, FileText, Calendar }
 
 interface OwnerRequest {
   id: number;
-  user_id: number;
-  business_name: string;
-  business_license_url: string;
-  id_card_number: string;
-  phone: string;
+  user_id?: number;
+  image_code?: string;
+  code_id?: string;
+  business_name?: string;
+  business_license?: string;
+  business_license_url?: string;
+  businessLicenseImage?: string;
+  business_license_image?: string;
+  id_card_number?: string;
+  phone?: string;
   email: string;
-  address: string;
+  address?: string;
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;
+  rejected_reason?: string;
+  rejection_reason?: string;
+  full_name?: string;
+  name?: string;
   user?: {
     name: string;
     email: string;
@@ -37,52 +54,86 @@ const AdminOwnerApprovals = () => {
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<OwnerRequest | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+
+  const normalizeResponseData = <T,>(response: any): T => {
+    return (response?.data ?? response) as T;
+  };
+
+  const resolveBusinessLicenseUrl = (request: OwnerRequest): string => {
+    const raw =
+      request.image_code ||
+      request.business_license_url ||
+      request.business_license ||
+      request.businessLicenseImage ||
+      request.business_license_image ||
+      '';
+
+    if (!raw) {
+      return 'https://via.placeholder.com/400x300?text=Business+License';
+    }
+
+    if (/^(https?:|data:|blob:)/i.test(raw)) {
+      return raw;
+    }
+
+    if (raw.startsWith('/storage/v1/object/public/')) {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      return `${supabaseUrl}${raw}`;
+    }
+
+    const normalizedPath = raw.replace(/^\/+/, '');
+
+    const { data: imageBucket } = supabase.storage
+      .from('image')
+      .getPublicUrl(normalizedPath);
+
+    return imageBucket.publicUrl;
+  };
+
+  const mapRegistrationToRequest = (item: OwnerRegistration): OwnerRequest => {
+    const runtimeItem = item as OwnerRegistration & {
+      businessLicenseImage?: string;
+      business_license_image?: string;
+      license_image?: string;
+      license_url?: string;
+    };
+
+    return {
+      ...item,
+      id: item.id,
+      email: item.email,
+      status: item.status,
+      created_at: item.created_at,
+      phone: item.phone,
+      address: item.address,
+      business_name: item.business_name,
+      image_code: item.image_code,
+      code_id: item.code_id,
+      business_license: item.business_license,
+      business_license_url: item.business_license_url,
+      businessLicenseImage: runtimeItem.businessLicenseImage,
+      business_license_image: runtimeItem.business_license_image || runtimeItem.license_image || runtimeItem.license_url,
+      id_card_number: item.id_card_number,
+      full_name: item.full_name,
+      name: item.name,
+      rejected_reason: item.rejected_reason,
+      rejection_reason: item.rejection_reason,
+    };
+  };
 
   useEffect(() => {
-    fetchRequests();
-  }, []);
+    fetchRequests(statusFilter === 'all' ? undefined : statusFilter);
+  }, [statusFilter]);
 
-  const fetchRequests = async () => {
+  const fetchRequests = async (status?: 'pending' | 'approved' | 'rejected') => {
     try {
       setLoading(true);
-      // const response = await api.get('/admin/owner-requests');
-      // setRequests(response.data);
-      
-      // Demo data
-      setRequests([
-        {
-          id: 1,
-          user_id: 10,
-          business_name: 'Sân bóng ABC',
-          business_license_url: '/demo/license.jpg',
-          id_card_number: '123456789',
-          phone: '0901234567',
-          email: 'ownerabc@example.com',
-          address: '123 Đường ABC, Quận 1, TP.HCM',
-          status: 'pending',
-          created_at: '2026-02-05T10:00:00Z',
-          user: {
-            name: 'Nguyễn Văn A',
-            email: 'ownerabc@example.com',
-          },
-        },
-        {
-          id: 2,
-          user_id: 11,
-          business_name: 'Sân bóng XYZ',
-          business_license_url: '/demo/license2.jpg',
-          id_card_number: '987654321',
-          phone: '0907654321',
-          email: 'ownerxyz@example.com',
-          address: '456 Đường XYZ, Quận 3, TP.HCM',
-          status: 'pending',
-          created_at: '2026-02-06T14:30:00Z',
-          user: {
-            name: 'Trần Thị B',
-            email: 'ownerxyz@example.com',
-          },
-        },
-      ]);
+      const response = await getOwnerRegistrations(status);
+      const data = normalizeResponseData<OwnerRegistration[]>(response);
+      const list = Array.isArray(data) ? data : [];
+      setRequests(list.map(mapRegistrationToRequest));
     } catch (error) {
       console.error('Error fetching requests:', error);
       toast({
@@ -97,43 +148,96 @@ const AdminOwnerApprovals = () => {
 
   const handleApprove = async (id: number) => {
     try {
-      // await api.post(`/admin/owner-requests/${id}/approve`);
+      setActionLoading(true);
+      const response = await approveOwnerRegistration(id);
+      const responseData = normalizeResponseData<{ message?: string }>(response);
       toast({
         title: 'Thành công',
-        description: 'Đã duyệt yêu cầu đăng ký chủ sân',
+        description: responseData?.message || 'Đã duyệt yêu cầu đăng ký chủ sân',
       });
-      fetchRequests();
+      await fetchRequests(statusFilter === 'all' ? undefined : statusFilter);
       setDialogOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Lỗi',
-        description: 'Không thể duyệt yêu cầu',
+        description: error?.response?.data?.message || 'Không thể duyệt yêu cầu. Vui lòng kiểm tra token admin.',
         variant: 'destructive',
       });
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleReject = async (id: number) => {
     try {
-      // await api.post(`/admin/owner-requests/${id}/reject`);
+      const reason = window.prompt('Nhập lý do từ chối:', 'Thiếu hồ sơ xác thực')?.trim();
+      if (!reason) {
+        return;
+      }
+
+      setActionLoading(true);
+      const response = await rejectOwnerRegistration(id, reason);
+      const responseData = normalizeResponseData<{ message?: string }>(response);
       toast({
         title: 'Thành công',
-        description: 'Đã từ chối yêu cầu đăng ký chủ sân',
+        description: responseData?.message || 'Đã từ chối yêu cầu đăng ký chủ sân',
       });
-      fetchRequests();
+      await fetchRequests(statusFilter === 'all' ? undefined : statusFilter);
       setDialogOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Lỗi',
-        description: 'Không thể từ chối yêu cầu',
+        description: error?.response?.data?.message || 'Không thể từ chối yêu cầu',
         variant: 'destructive',
       });
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const viewDetails = (request: OwnerRequest) => {
-    setSelectedRequest(request);
-    setDialogOpen(true);
+  const handleDelete = async (id: number) => {
+    const confirmed = window.confirm('Bạn có chắc muốn xóa yêu cầu đăng ký này?');
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      const response = await deleteOwnerRegistration(id);
+      const responseData = normalizeResponseData<{ message?: string }>(response);
+      toast({
+        title: 'Thành công',
+        description: responseData?.message || 'Đã xóa yêu cầu đăng ký',
+      });
+      await fetchRequests(statusFilter === 'all' ? undefined : statusFilter);
+      setDialogOpen(false);
+    } catch (error: any) {
+      toast({
+        title: 'Lỗi',
+        description: error?.response?.data?.message || 'Không thể xóa yêu cầu',
+        variant: 'destructive',
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const viewDetails = async (request: OwnerRequest) => {
+    try {
+      setActionLoading(true);
+      const response = await getOwnerRegistration(request.id);
+      const data = normalizeResponseData<OwnerRegistration>(response);
+      setSelectedRequest(mapRegistrationToRequest(data));
+      setDialogOpen(true);
+    } catch (error) {
+      toast({
+        title: 'Lỗi',
+        description: 'Không thể tải chi tiết yêu cầu',
+        variant: 'destructive',
+      });
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -171,7 +275,39 @@ const AdminOwnerApprovals = () => {
         {/* Requests List */}
         <Card>
           <CardHeader>
-            <CardTitle>Danh sách yêu cầu</CardTitle>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <CardTitle>Danh sách yêu cầu</CardTitle>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'pending' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('pending')}
+                >
+                  Chờ duyệt
+                </Button>
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'approved' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('approved')}
+                >
+                  Đã duyệt
+                </Button>
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'rejected' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('rejected')}
+                >
+                  Đã từ chối
+                </Button>
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'all' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('all')}
+                >
+                  Tất cả
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -197,7 +333,7 @@ const AdminOwnerApprovals = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
                           <div className="flex items-center gap-2">
                             <Building2 className="w-4 h-4" />
-                            <span>{request.user?.name || 'N/A'}</span>
+                            <span>{request.user?.name || request.full_name || request.name || 'N/A'}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Mail className="w-4 h-4" />
@@ -205,7 +341,7 @@ const AdminOwnerApprovals = () => {
                           </div>
                           <div className="flex items-center gap-2">
                             <Phone className="w-4 h-4" />
-                            <span>{request.phone}</span>
+                            <span>{request.phone || 'N/A'}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4" />
@@ -213,7 +349,7 @@ const AdminOwnerApprovals = () => {
                           </div>
                         </div>
                         
-                        <p className="text-sm text-gray-500 mt-2">{request.address}</p>
+                        <p className="text-sm text-gray-500 mt-2">{request.address || 'N/A'}</p>
                       </div>
 
                       <div className="flex gap-2 ml-4">
@@ -221,6 +357,7 @@ const AdminOwnerApprovals = () => {
                           variant="outline"
                           size="sm"
                           onClick={() => viewDetails(request)}
+                          disabled={actionLoading}
                         >
                           <Eye className="w-4 h-4 mr-1" />
                           Xem chi tiết
@@ -232,6 +369,7 @@ const AdminOwnerApprovals = () => {
                               size="sm"
                               className="bg-green-600 hover:bg-green-700"
                               onClick={() => handleApprove(request.id)}
+                              disabled={actionLoading}
                             >
                               <CheckCircle className="w-4 h-4 mr-1" />
                               Duyệt
@@ -240,6 +378,7 @@ const AdminOwnerApprovals = () => {
                               variant="destructive"
                               size="sm"
                               onClick={() => handleReject(request.id)}
+                              disabled={actionLoading}
                             >
                               <XCircle className="w-4 h-4 mr-1" />
                               Từ chối
@@ -257,7 +396,7 @@ const AdminOwnerApprovals = () => {
 
         {/* Detail Dialog */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Chi tiết yêu cầu đăng ký</DialogTitle>
               <DialogDescription>
@@ -269,11 +408,11 @@ const AdminOwnerApprovals = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">Tên doanh nghiệp</label>
-                    <p className="text-gray-700">{selectedRequest.business_name}</p>
+                    <p className="text-gray-700">{selectedRequest.business_name || 'N/A'}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium">Người đại diện</label>
-                    <p className="text-gray-700">{selectedRequest.user?.name || 'N/A'}</p>
+                    <p className="text-gray-700">{selectedRequest.user?.name || selectedRequest.full_name || selectedRequest.name || 'N/A'}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium">Email</label>
@@ -281,11 +420,11 @@ const AdminOwnerApprovals = () => {
                   </div>
                   <div>
                     <label className="text-sm font-medium">Số điện thoại</label>
-                    <p className="text-gray-700">{selectedRequest.phone}</p>
+                    <p className="text-gray-700">{selectedRequest.phone || 'N/A'}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium">CMND/CCCD</label>
-                    <p className="text-gray-700">{selectedRequest.id_card_number}</p>
+                    <p className="text-gray-700">{selectedRequest.id_card_number || selectedRequest.code_id || 'N/A'}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium">Trạng thái</label>
@@ -293,19 +432,37 @@ const AdminOwnerApprovals = () => {
                   </div>
                   <div className="col-span-2">
                     <label className="text-sm font-medium">Địa chỉ</label>
-                    <p className="text-gray-700">{selectedRequest.address}</p>
+                    <p className="text-gray-700">{selectedRequest.address || 'N/A'}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-sm font-medium">Lý do từ chối</label>
+                    <p className="text-gray-700">{selectedRequest.rejected_reason || selectedRequest.rejection_reason || 'N/A'}</p>
                   </div>
                   <div className="col-span-2">
                     <label className="text-sm font-medium">Giấy phép kinh doanh</label>
-                    <div className="mt-2 border rounded-lg p-2">
-                      <img 
-                        src={selectedRequest.business_license_url} 
-                        alt="Business License"
-                        className="max-w-full h-auto rounded"
-                        onError={(e) => {
-                          e.currentTarget.src = 'https://via.placeholder.com/400x300?text=Business+License';
-                        }}
-                      />
+                    <div className="mt-2 rounded-lg border bg-muted/30 p-3 space-y-3">
+                      <div className="w-full max-h-[240px] overflow-hidden rounded-md border bg-background flex items-center justify-center">
+                        <img 
+                          src={resolveBusinessLicenseUrl(selectedRequest)} 
+                          alt="Business License"
+                          loading="lazy"
+                          decoding="async"
+                          className="w-full max-h-[240px] object-contain"
+                          onError={(e) => {
+                            e.currentTarget.src = 'https://via.placeholder.com/400x300?text=Business+License';
+                          }}
+                        />
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(resolveBusinessLicenseUrl(selectedRequest), '_blank', 'noopener,noreferrer')}
+                        >
+                          Mở ảnh đầy đủ
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -315,12 +472,21 @@ const AdminOwnerApprovals = () => {
                     <Button
                       variant="outline"
                       onClick={() => setDialogOpen(false)}
+                      disabled={actionLoading}
                     >
                       Đóng
                     </Button>
                     <Button
+                      variant="outline"
+                      onClick={() => handleDelete(selectedRequest.id)}
+                      disabled={actionLoading}
+                    >
+                      Xóa
+                    </Button>
+                    <Button
                       variant="destructive"
                       onClick={() => handleReject(selectedRequest.id)}
+                      disabled={actionLoading}
                     >
                       <XCircle className="w-4 h-4 mr-1" />
                       Từ chối
@@ -329,6 +495,7 @@ const AdminOwnerApprovals = () => {
                       variant="default"
                       className="bg-green-600 hover:bg-green-700"
                       onClick={() => handleApprove(selectedRequest.id)}
+                      disabled={actionLoading}
                     >
                       <CheckCircle className="w-4 h-4 mr-1" />
                       Duyệt

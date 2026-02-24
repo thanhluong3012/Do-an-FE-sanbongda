@@ -1,13 +1,15 @@
 import { ArrowRight, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import heroImage from "@/assets/hero-field.jpg";
 
 const HeroSection = () => {
+  const navigate = useNavigate();
+
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Background Image */}
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 pointer-events-none">
         <img
           src={heroImage}
           alt="Sân bóng đá"
@@ -19,7 +21,7 @@ const HeroSection = () => {
       </div>
 
       {/* Content */}
-      <div className="relative container mx-auto px-4 pt-24 pb-20">
+      <div className="relative z-10 container mx-auto px-4 pt-24 pb-20">
         <div className="max-w-5xl mx-auto text-center">
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-5 py-3 bg-white/90 backdrop-blur-md rounded-full border border-white/30 mb-8 animate-fade-in shadow-lg">
@@ -72,16 +74,15 @@ const HeroSection = () => {
               </div>
               
               {/* CTA Button */}
-              <div className="flex flex-col gap-4 lg:min-w-[240px]">
-                <Button 
-                  size="lg" 
+              <div className="flex flex-col gap-4 lg:min-w-[240px] pointer-events-auto">
+                <Button
+                  size="lg"
+                  type="button"
+                  onClick={() => navigate("/register/field-owner")}
                   className="text-lg px-10 py-7 shadow-xl hover:shadow-2xl transition-all bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-white font-bold rounded-xl"
-                  asChild
                 >
-                  <Link to="/register/field-owner">
-                    Đăng ký ngay
-                    <ArrowRight size={22} className="ml-2" />
-                  </Link>
+                  Đăng ký ngay
+                  <ArrowRight size={22} className="ml-2" />
                 </Button>
                 <div className="text-center space-y-2">
                   <div className="h-px bg-gray-300"></div>

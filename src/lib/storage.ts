@@ -13,6 +13,10 @@ export async function uploadImage(
   folder?: string
 ): Promise<string> {
   try {
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) {
+      throw new Error('Thiếu cấu hình Supabase trong file .env (VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY)');
+    }
+
     // Validate file
     if (!file.type.startsWith('image/')) {
       throw new Error('File phải là ảnh');
@@ -54,7 +58,15 @@ export async function uploadImage(
     return urlData.publicUrl;
   } catch (error) {
     console.error('Upload image error:', error);
-    throw error;
+    if (error instanceof Error) {
+      if (error.message === 'Failed to fetch') {
+        throw new Error('Không thể kết nối Supabase Storage. Kiểm tra internet, VITE_SUPABASE_URL, bucket và Storage Policies.');
+      }
+
+      throw error;
+    }
+
+    throw new Error('Lỗi upload ảnh không xác định');
   }
 }
 

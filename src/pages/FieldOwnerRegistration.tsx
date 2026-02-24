@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,7 +19,6 @@ const idCardSchema = z.string().regex(/^[0-9]{9,12}$/, 'CMND/CCCD phải có 9-1
 
 const FieldOwnerRegistration = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { toast } = useToast();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,12 +34,6 @@ const FieldOwnerRegistration = () => {
   const [idCardNumber, setIdCardNumber] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [address, setAddress] = useState('');
-
-  useEffect(() => {
-    if (user) {
-      navigate('/');
-    }
-  }, [user, navigate]);
 
   const validateForm = (): boolean => {
     try {
@@ -111,17 +103,34 @@ const FieldOwnerRegistration = () => {
     setIsSubmitting(true);
     
     try {
-      // Gọi API đăng ký chủ sân bóng
-      await api.post('/owner-registrations', {
+      const businessLicenseUrl = businessLicenseImage?.trim() || '';
+      const businessLicensePath = businessLicenseUrl
+        ? businessLicenseUrl.split('/storage/v1/object/public/image/')[1] || ''
+        : '';
+
+      const payload = {
+        full_name: fullName,
         name: fullName,
         email,
         password,
+        password_confirmation: confirmPassword,
         phone,
-        businessLicenseImage,
+        image_code: businessLicenseUrl,
+        code_id: idCardNumber,
+        business_license_url: businessLicenseUrl,
+        business_license_image: businessLicenseUrl,
+        businessLicenseImage: businessLicenseUrl,
+        license_url: businessLicenseUrl,
+        business_license_path: businessLicensePath,
+        id_card_number: idCardNumber,
         idCardNumber,
+        business_name: businessName,
         businessName,
         address,
-      });
+      };
+
+      // Gọi API đăng ký chủ sân bóng
+      await api.post('/owner-registrations', payload);
 
       toast({
         title: 'Thành công',
@@ -136,6 +145,18 @@ const FieldOwnerRegistration = () => {
       let message = 'Đăng ký thất bại';
       if (error.response?.data?.message) {
         message = error.response.data.message;
+      }
+
+      const validationErrors = error.response?.data?.errors;
+      if (validationErrors && typeof validationErrors === 'object') {
+        const firstField = Object.keys(validationErrors)[0];
+        const firstError = Array.isArray(validationErrors[firstField])
+          ? validationErrors[firstField][0]
+          : validationErrors[firstField];
+
+        if (firstError) {
+          message = String(firstError);
+        }
       } else if (error.message) {
         message = error.message;
       }
@@ -334,7 +355,7 @@ const FieldOwnerRegistration = () => {
                   <ImageUpload
                     value={businessLicenseImage || undefined}
                     onChange={(url) => setBusinessLicenseImage(url)}
-                    bucket="business-licenses"
+                    bucket="image"
                     folder="field-owners"
                     maxSize={5}
                   />
