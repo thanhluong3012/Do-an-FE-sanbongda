@@ -9,17 +9,21 @@ import Auth from "./pages/Auth";
 import Booking from "./pages/Booking";
 import Fields from "./pages/Fields";
 import FieldDetail from "./pages/FieldDetail";
+import FieldComplexDetail from "./pages/FieldComplexDetail";
 import Tournament from "./pages/Tournament";
 import Tournaments from "./pages/Tournaments";
 import TournamentDetail from "./pages/TournamentDetail";
+import ApiDebug from "./pages/ApiDebug";
 import NotFound from "./pages/NotFound";
 import FieldOwnerRegistration from "./pages/FieldOwnerRegistration";
+import MyBookings from "./pages/MyBookings";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 // Admin Pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminOwnerApprovals from "./pages/admin/AdminOwnerApprovals";
+import AdminTournaments from "./pages/admin/AdminTournaments";
 
 // Owner Pages
 import OwnerDashboard from "./pages/owner/OwnerDashboard";
@@ -48,17 +52,42 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/register/field-owner" element={<FieldOwnerRegistration />} />
-            <Route path="/booking" element={<Booking />} />
+            
+            {/* Booking - Yêu cầu đăng nhập (không cần role cụ thể) */}
+            <Route path="/booking" element={
+              <ProtectedRoute>
+                <Booking />
+              </ProtectedRoute>
+            } />
+            
+            {/* My Bookings - CHỈ DÀNH CHO MEMBER (role=4) */}
+            <Route path="/my-bookings" element={
+              <ProtectedRoute requiredRole={4}>
+                <MyBookings />
+              </ProtectedRoute>
+            } />
+            
+            {/* Public pages */}
             <Route path="/fields" element={<Fields />} />
             <Route path="/field/:id" element={<FieldDetail />} />
+            <Route path="/field-complex/:id" element={<FieldComplexDetail />} />
             <Route path="/tournaments" element={<Tournaments />} />
-            <Route path="/tournament/create" element={<Tournament />} />
+            <Route path="/api-debug" element={<ApiDebug />} />
+            
+            {/* Tournament pages */}
+            <Route path="/tournament/create" element={
+              <ProtectedRoute>
+                <Tournament />
+              </ProtectedRoute>
+            } />
+            
             <Route path="/tournament/:id" element={<TournamentDetail />} />
             
             {/* Admin Routes - Role: ADMIN */}
             <Route path="/admin/dashboard" element={<ProtectedRoute requiredRole={1}><AdminDashboard /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute requiredRole={1}><AdminUsers /></ProtectedRoute>} />
             <Route path="/admin/owner-approvals" element={<ProtectedRoute requiredRole={1}><AdminOwnerApprovals /></ProtectedRoute>} />
+            <Route path="/admin/tournaments" element={<ProtectedRoute requiredRole={1}><AdminTournaments /></ProtectedRoute>} />
             
             {/* Owner Routes - Role: OWNER */}
             <Route path="/owner/dashboard" element={<ProtectedRoute requiredRole={2}><OwnerDashboard /></ProtectedRoute>} />

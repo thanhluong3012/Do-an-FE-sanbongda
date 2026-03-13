@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth, ROLES } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Menu, X, MapPin, Calendar, Trophy, User, LogOut, Building2, LayoutDashboard } from "lucide-react";
+import { Menu, X, MapPin, Calendar, Trophy, User, LogOut, Building2, LayoutDashboard, Clock, Users } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -106,6 +106,18 @@ const Header = () => {
                         <Link to={dashboardLink} className="cursor-pointer">
                           <LayoutDashboard className="w-4 h-4 mr-2" />
                           Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  {/* Chỉ hiển thị "Lịch sử đặt sân" cho member (không phải admin/owner/staff) */}
+                  {!isAdmin() && !isOwner() && !isStaff() && (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link to="/my-bookings" className="cursor-pointer">
+                          <Clock className="w-4 h-4 mr-2" />
+                          Lịch sử đặt sân
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />

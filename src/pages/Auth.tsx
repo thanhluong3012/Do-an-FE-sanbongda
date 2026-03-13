@@ -11,7 +11,7 @@ import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Email không hợp lệ');
-const passwordSchema = z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự');
+const passwordSchema = z.string().min(8, 'Mật khẩu phải có ít nhất 8 ký tự');
 const nameSchema = z.string().min(2, 'Tên phải có ít nhất 2 ký tự');
 
 const Auth = () => {
@@ -60,15 +60,10 @@ const Auth = () => {
     setIsSubmitting(false);
 
     if (error) {
-      let message = 'Đăng nhập thất bại';
-      if (error.message.includes('Invalid login credentials')) {
-        message = 'Email hoặc mật khẩu không đúng';
-      } else if (error.message.includes('Email not confirmed')) {
-        message = 'Vui lòng xác nhận email trước khi đăng nhập';
-      }
+      // Hiển thị error message từ backend (đã được xử lý trong useAuth)
       toast({
-        title: 'Lỗi',
-        description: message,
+        title: 'Lỗi đăng nhập',
+        description: error.message,
         variant: 'destructive',
       });
     } else {
@@ -108,17 +103,14 @@ const Auth = () => {
     }
 
     setIsSubmitting(true);
-    const { error } = await signUp(registerEmail, registerPassword, registerName);
+    const { error } = await signUp(registerEmail, registerPassword, registerName, registerConfirmPassword);
     setIsSubmitting(false);
 
     if (error) {
-      let message = 'Đăng ký thất bại';
-      if (error.message.includes('User already registered')) {
-        message = 'Email này đã được đăng ký';
-      }
+      // Hiển thị error message từ backend (đã được xử lý trong useAuth)
       toast({
-        title: 'Lỗi',
-        description: message,
+        title: 'Lỗi đăng ký',
+        description: error.message,
         variant: 'destructive',
       });
     } else {
@@ -126,7 +118,11 @@ const Auth = () => {
         title: 'Thành công',
         description: 'Đăng ký thành công! Vui lòng đăng nhập.',
       });
-      // Không navigate, để user tự chuyển sang tab đăng nhập
+      // Reset form
+      setRegisterName('');
+      setRegisterEmail('');
+      setRegisterPassword('');
+      setRegisterConfirmPassword('');
     }
   };
 
@@ -263,6 +259,7 @@ const Auth = () => {
                         onChange={(e) => setRegisterPassword(e.target.value)}
                         className="pl-10 pr-10"
                         required
+                        minLength={8}
                       />
                       <button
                         type="button"
@@ -272,6 +269,9 @@ const Auth = () => {
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Tối thiểu 8 ký tự
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="register-confirm-password">Xác nhận mật khẩu</Label>
@@ -285,8 +285,19 @@ const Auth = () => {
                         onChange={(e) => setRegisterConfirmPassword(e.target.value)}
                         className="pl-10"
                         required
+                        minLength={8}
                       />
                     </div>
+                    {registerConfirmPassword && registerPassword !== registerConfirmPassword && (
+                      <p className="text-xs text-destructive">
+                        Mật khẩu không khớp
+                      </p>
+                    )}
+                    {registerConfirmPassword && registerPassword === registerConfirmPassword && (
+                      <p className="text-xs text-green-600">
+                        ✓ Mật khẩu khớp
+                      </p>
+                    )}
                   </div>
                   <Button type="submit" className="w-full" disabled={isSubmitting}>
                     {isSubmitting ? 'Đang đăng ký...' : 'Đăng ký'}

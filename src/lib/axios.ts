@@ -32,10 +32,30 @@ api.interceptors.response.use(
     // Xử lý lỗi chung
     if (error.response?.status === 401) {
       // Token hết hạn hoặc không hợp lệ
+      console.warn('⚠️ 401 Unauthorized - Clearing auth data');
+      
+      // Clear localStorage
       localStorage.removeItem('access_token');
       localStorage.removeItem('user');
-      window.location.href = '/auth';
+      localStorage.removeItem('auth_timestamp');
+      
+      // Chỉ redirect nếu không phải đang ở trang auth
+      const currentPath = window.location.pathname;
+      if (!currentPath.includes('/auth')) {
+        console.log('🔄 Redirecting to login page');
+        window.location.href = '/auth';
+      }
     }
+    
+    // Log errors để debug
+    if (error.response?.status === 403) {
+      console.warn('⚠️ 403 Forbidden - Insufficient permissions');
+    }
+    
+    if (error.response?.status >= 500) {
+      console.error('❌ Server error:', error.response.status, error.response.data);
+    }
+    
     return Promise.reject(error);
   }
 );

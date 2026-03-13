@@ -1,116 +1,204 @@
-import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Trophy, MapPin, Users, Calendar, DollarSign, FileText, Phone, Mail, ArrowLeft, CheckCircle } from 'lucide-react';
-
-// Mock data - sẽ thay bằng API call
-const mockTournament = {
-  id: 1,
-  name: 'Giải bóng đá TM Arena Cup 2026',
-  type: 'Bảng đấu + Loại trực tiếp',
-  fieldName: 'Sân TM Arena 1',
-  location: '123 Đường ABC, Quận 1, TP.HCM',
-  teamSize: '5v5',
-  maxTeams: 16,
-  registeredTeams: 12,
-  startDate: '2026-02-15',
-  endDate: '2026-03-15',
-  startTime: '18:00',
-  entryFee: 500000,
-  prize: '10,000,000 VNĐ + Cúp vô địch',
-  status: 'open',
-  rules: `- Thời gian: 2 hiệp x 25 phút
-- Nghỉ giữa hiệp: 10 phút
-- Luật việt vị: Có áp dụng
-- Số cầu thủ dự bị: Tối đa 5 người
-- Thẻ phạt: Theo luật FIFA
-- Đá penalty khi hòa ở vòng loại trực tiếp
-- Mỗi đội được thay tối đa 7 lượt
-- Cầu thủ nhận thẻ đỏ sẽ bị treo giò 1 trận
-- Ban tổ chức cung cấp trọng tài và bóng thi đấu`,
-  contactName: 'Nguyễn Văn A',
-  contactPhone: '0123456789',
-  contactEmail: 'contact@tmarena.com',
-  teams: [
-    { id: 1, name: 'FC Thunder', captain: 'Trần Văn B', players: 10 },
-    { id: 2, name: 'Dragon United', captain: 'Lê Văn C', players: 12 },
-    { id: 3, name: 'Phoenix FC', captain: 'Phạm Văn D', players: 11 },
-    { id: 4, name: 'Tigers Squad', captain: 'Hoàng Văn E', players: 9 },
-  ],
-  schedule: [
-    { date: '2026-02-15', time: '18:00', match: 'FC Thunder vs Dragon United', round: 'Vòng bảng A' },
-    { date: '2026-02-15', time: '19:30', match: 'Phoenix FC vs Tigers Squad', round: 'Vòng bảng A' },
-    { date: '2026-02-22', time: '18:00', match: 'FC Thunder vs Phoenix FC', round: 'Vòng bảng A' },
-    { date: '2026-02-22', time: '19:30', match: 'Dragon United vs Tigers Squad', round: 'Vòng bảng A' },
-  ],
-};
+import { useAuth } from '@/hooks/useAuth';
+import { Tournament, tournamentService } from '@/services/tournamentService';
+import { registrationService, RegistrationRequest, TournamentRegistration } from '@/services/registrationService';
+import { matchService, Match } from '@/services/matchService';
+import { standingsService, GroupStanding } from '@/services/standingsService';
+import { teamService, Team } from '@/services/teamService';
+import { TournamentStatusBadge, TournamentFormatBadge } from '@/components/Tournament/TournamentStatusBadge';
+import { RegistrationFormDialog } from '@/components/Registration/RegistrationFormDialog';
+import { RegistrationList } from '@/components/Registration/RegistrationList';
+import { MatchCard } from '@/components/Match/MatchCard';
+import { UpdateScoreDialog } from '@/components/Match/UpdateScoreDialog';
+import { GroupStandingsTable } from '@/components/Standings/GroupStandingsTable';
+import { Trophy, MapPin, Users, Calendar, ArrowLeft, CheckCircle, Loader2, FileText, User } from 'lucide-react';
+import { format } from 'date-fns';
+import { vi } from 'date-fns/locale';
 
 const TournamentDetail = () => {
-  const { id } = useParams();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { isAdmin } = useAuth();
 
-  // Registration form state
-  const [teamName, setTeamName] = useState('');
-  const [captainName, setCaptainName] = useState('');
-  const [captainPhone, setCaptainPhone] = useState('');
-  const [captainEmail, setCaptainEmail] = useState('');
+  // States
+  const [tournament, setTournament] = useState<Tournament | null>(null);
+  const [registrations, setRegistrations] = useState<TournamentRegistration[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [standings, setStandings] = useState<GroupStanding[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRegistrationDialogOpen, setIsRegistrationDialogOpen] = useState(false);
+  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [isScoreDialogOpen, setIsScoreDialogOpen] = useState(false);
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!teamName || !captainName || !captainPhone) {
+  // Load data
+  useEffect(() => {
+    if (id) {
+      loadTournamentData();
+    }
+  }, [id]);
+
+  const loadTournamentData = async () => {
+    setIsLoading(true);
+    try {
+      const tournamentId = parseInt(id!);
+      
+      // Load tournament detail
+      const tournamentData = await tournamentService.getById(tournamentId);
+      setTournament(tournamentData);
+
+      // Load related data (with fallbacks) - không để lỗi này ảnh hưởng đến trang
+      try {
+        const registrationsData = await registrationService.getAll({ tournament_id: tournamentId }).catch(err => {
+          console.warn('Failed to load registrations:', err);
+          return [];
+        });
+        setRegistrations(registrationsData);
+      } catch (err) {
+        console.warn('Registration service error:', err);
+      }
+
+      try {
+        const matchesData = await matchService.getAll({ tournament_id: tournamentId }).catch(err => {
+          console.warn('Failed to load matches:', err);
+          return [];
+        });
+        setMatches(matchesData);
+      } catch (err) {
+        console.warn('Match service error:', err);
+      }
+
+      try {
+        const standingsData = await standingsService.getByTournament(tournamentId).catch(err => {
+          console.warn('Failed to load standings:', err);
+          return [];
+        });
+        setStandings(standingsData);
+      } catch (err) {
+        console.warn('Standings service error:', err);
+      }
+
+      try {
+        const teamsData = await teamService.getAll().catch(err => {
+          console.warn('Failed to load teams:', err);
+          return [];
+        });
+        setTeams(teamsData);
+      } catch (err) {
+        console.warn('Team service error:', err);
+      }
+    } catch (error: any) {
+      console.error('Error loading tournament:', error);
       toast({
-        title: 'Lỗi',
-        description: 'Vui lòng điền đầy đủ thông tin',
+        title: 'Lỗi kết nối API',
+        description: error.response?.data?.message || 'Không thể tải thông tin giải đấu. Vui lòng kiểm tra backend.',
         variant: 'destructive',
       });
-      return;
+      // Don't navigate away immediately, show error in page
+      setTournament(null);
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    setIsSubmitting(true);
+  // Registration handlers
+  const handleRegister = async (data: RegistrationRequest) => {
+    await registrationService.create(data);
+    await loadTournamentData(); // Reload data
+  };
 
-    // TODO: Call API to register team
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setIsDialogOpen(false);
+  const handleApproveRegistration = async (registrationId: number) => {
+    try {
+      await registrationService.approve(registrationId);
       toast({
-        title: 'Đăng ký thành công!',
-        description: 'Đội của bạn đã được đăng ký tham gia giải đấu.',
+        title: 'Thành công',
+        description: 'Đã duyệt đăng ký',
       });
-      // Reset form
-      setTeamName('');
-      setCaptainName('');
-      setCaptainPhone('');
-      setCaptainEmail('');
-    }, 1500);
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'open':
-        return <Badge className="bg-green-500 text-lg px-3 py-1">Đang mở đăng ký</Badge>;
-      case 'full':
-        return <Badge className="bg-yellow-500 text-lg px-3 py-1">Đã đủ đội</Badge>;
-      case 'ongoing':
-        return <Badge className="bg-blue-500 text-lg px-3 py-1">Đang diễn ra</Badge>;
-      case 'finished':
-        return <Badge className="bg-gray-500 text-lg px-3 py-1">Đã kết thúc</Badge>;
-      default:
-        return null;
+      await loadTournamentData();
+    } catch (error: any) {
+      toast({
+        title: 'Lỗi',
+        description: error.response?.data?.message || 'Không thể duyệt đăng ký',
+        variant: 'destructive',
+      });
     }
   };
+
+  const handleRejectRegistration = async (registrationId: number, reason: string) => {
+    try {
+      await registrationService.reject(registrationId, { reason });
+      toast({
+        title: 'Thành công',
+        description: 'Đã từ chối đăng ký',
+      });
+      await loadTournamentData();
+    } catch (error: any) {
+      toast({
+        title: 'Lỗi',
+        description: error.response?.data?.message || 'Không thể từ chối đăng ký',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Match handlers
+  const handleMatchClick = (match: Match) => {
+    setSelectedMatch(match);
+    setIsScoreDialogOpen(true);
+  };
+
+  const handleUpdateScore = async (data: { home_score: number; away_score: number; status: 'completed' | 'in_progress' }) => {
+    if (selectedMatch) {
+      await matchService.updateScore(selectedMatch.id, data);
+      await loadTournamentData(); // Reload to get updated standings
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    try {
+      return format(new Date(dateString), 'dd/MM/yyyy', { locale: vi });
+    } catch {
+      return dateString;
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container mx-auto px-4 py-8 mt-20">
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (!tournament) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container mx-auto px-4 py-8 mt-20">
+          <Card className="p-12 text-center">
+            <p className="text-muted-foreground">Không tìm thấy giải đấu</p>
+          </Card>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  const canRegister = tournament.status === 'open';
 
   return (
     <div className="min-h-screen bg-background">
@@ -130,242 +218,178 @@ const TournamentDetail = () => {
                 <Trophy className="w-8 h-8 text-primary" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold mb-2">{mockTournament.name}</h1>
+                <h1 className="text-4xl font-bold mb-2">{tournament.name}</h1>
                 <div className="flex flex-wrap gap-2">
-                  {getStatusBadge(mockTournament.status)}
-                  <Badge variant="outline">{mockTournament.type}</Badge>
-                  <Badge variant="outline">{mockTournament.teamSize}</Badge>
+                  <TournamentStatusBadge status={tournament.status} className="text-lg px-3 py-1" />
+                  <TournamentFormatBadge format={tournament.format} className="text-lg px-3 py-1" />
                 </div>
               </div>
             </div>
             
-            {mockTournament.status === 'open' && (
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button size="lg" className="gap-2">
-                    <CheckCircle className="w-5 h-5" />
-                    Đăng ký tham gia
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Đăng ký tham gia giải đấu</DialogTitle>
-                    <DialogDescription>
-                      Điền thông tin đội của bạn để đăng ký tham gia
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleRegister}>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="teamName">Tên đội <span className="text-destructive">*</span></Label>
-                        <Input
-                          id="teamName"
-                          placeholder="VD: FC Thunder"
-                          value={teamName}
-                          onChange={(e) => setTeamName(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="captainName">Tên đội trưởng <span className="text-destructive">*</span></Label>
-                        <Input
-                          id="captainName"
-                          placeholder="VD: Nguyễn Văn A"
-                          value={captainName}
-                          onChange={(e) => setCaptainName(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="captainPhone">Số điện thoại <span className="text-destructive">*</span></Label>
-                        <Input
-                          id="captainPhone"
-                          type="tel"
-                          placeholder="VD: 0123456789"
-                          value={captainPhone}
-                          onChange={(e) => setCaptainPhone(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="captainEmail">Email</Label>
-                        <Input
-                          id="captainEmail"
-                          type="email"
-                          placeholder="VD: captain@email.com"
-                          value={captainEmail}
-                          onChange={(e) => setCaptainEmail(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Hủy
-                      </Button>
-                      <Button type="submit" disabled={isSubmitting}>
-                        {isSubmitting ? 'Đang đăng ký...' : 'Xác nhận đăng ký'}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
+            {canRegister && (
+              <Button size="lg" className="gap-2" onClick={() => setIsRegistrationDialogOpen(true)}>
+                <CheckCircle className="w-5 h-5" />
+                Đăng ký tham gia
+              </Button>
             )}
           </div>
-        </div>
 
-        {/* Content Tabs */}
-        <Tabs defaultValue="info" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="info">Thông tin</TabsTrigger>
-            <TabsTrigger value="rules">Thể lệ</TabsTrigger>
-            <TabsTrigger value="teams">Đội tham gia ({mockTournament.registeredTeams})</TabsTrigger>
-            <TabsTrigger value="schedule">Lịch thi đấu</TabsTrigger>
-          </TabsList>
-
-          {/* Thông tin tab */}
-          <TabsContent value="info" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <MapPin className="w-5 h-5" />
-                    Địa điểm tổ chức
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <p className="font-medium">{mockTournament.fieldName}</p>
-                  <p className="text-muted-foreground">{mockTournament.location}</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="w-5 h-5" />
-                    Thời gian
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <p><strong>Bắt đầu:</strong> {new Date(mockTournament.startDate).toLocaleDateString('vi-VN')}</p>
-                  <p><strong>Kết thúc:</strong> {new Date(mockTournament.endDate).toLocaleDateString('vi-VN')}</p>
-                  <p><strong>Giờ thi đấu:</strong> {mockTournament.startTime}</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="w-5 h-5" />
-                    Quy mô
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <p><strong>Loại sân:</strong> {mockTournament.teamSize}</p>
-                  <p><strong>Số đội:</strong> {mockTournament.registeredTeams}/{mockTournament.maxTeams} đội</p>
-                  <p className="text-sm text-muted-foreground">
-                    Còn {mockTournament.maxTeams - mockTournament.registeredTeams} slot trống
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <DollarSign className="w-5 h-5" />
-                    Chi phí & Giải thưởng
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <p><strong>Phí tham gia:</strong> {mockTournament.entryFee.toLocaleString('vi-VN')} VNĐ</p>
-                  <p><strong>Giải thưởng:</strong></p>
-                  <p className="text-primary font-medium">🏆 {mockTournament.prize}</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Contact info */}
+          {/* Tournament Info Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Phone className="w-5 h-5" />
-                  Thông tin liên hệ
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <p><strong>Người liên hệ:</strong> {mockTournament.contactName}</p>
-                <p className="flex items-center gap-2">
-                  <Phone className="w-4 h-4" />
-                  {mockTournament.contactPhone}
-                </p>
-                <p className="flex items-center gap-2">
-                  <Mail className="w-4 h-4" />
-                  {mockTournament.contactEmail}
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Thể lệ tab */}
-          <TabsContent value="rules">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Thể lệ thi đấu
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <pre className="whitespace-pre-wrap font-sans">{mockTournament.rules}</pre>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Teams tab */}
-          <TabsContent value="teams">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {mockTournament.teams.map((team) => (
-                <Card key={team.id}>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-bold text-lg">{team.name}</h3>
-                        <p className="text-sm text-muted-foreground">Đội trưởng: {team.captain}</p>
-                        <p className="text-sm text-muted-foreground">Số cầu thủ: {team.players}</p>
-                      </div>
-                      <Trophy className="w-8 h-8 text-muted-foreground" />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          {/* Schedule tab */}
-          <TabsContent value="schedule">
-            <Card>
-              <CardHeader>
-                <CardTitle>Lịch thi đấu</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {mockTournament.schedule.map((match, index) => (
-                    <div key={index} className="flex items-center gap-4 p-4 border rounded-lg">
-                      <div className="flex-shrink-0 text-center">
-                        <p className="font-bold">{new Date(match.date).toLocaleDateString('vi-VN')}</p>
-                        <p className="text-sm text-muted-foreground">{match.time}</p>
-                      </div>
-                      <div className="flex-grow">
-                        <Badge variant="outline" className="mb-2">{match.round}</Badge>
-                        <p className="font-medium">{match.match}</p>
-                      </div>
-                    </div>
-                  ))}
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <MapPin className="w-5 h-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Địa điểm</p>
+                    <p className="font-semibold">{tournament.field_cluster?.name || 'N/A'}</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <Users className="w-5 h-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Số đội</p>
+                    <p className="font-semibold">
+                      {tournament.registered_teams_count || 0} / {tournament.max_teams}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-5 h-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Thời gian</p>
+                    <p className="font-semibold">
+                      {formatDate(tournament.start_date)} - {formatDate(tournament.end_date)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <Tabs defaultValue="info" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="info">Thông tin</TabsTrigger>
+            <TabsTrigger value="registrations">
+              Đăng ký ({registrations.length})
+            </TabsTrigger>
+            <TabsTrigger value="matches">
+              Lịch thi đấu ({matches.length})
+            </TabsTrigger>
+            <TabsTrigger value="standings">Bảng xếp hạng</TabsTrigger>
+          </TabsList>
+
+          {/* Tab: Thông tin */}
+          <TabsContent value="info" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Thông tin chi tiết</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {tournament.description && (
+                  <div>
+                    <h3 className="font-semibold mb-2">Mô tả</h3>
+                    <p className="text-muted-foreground">{tournament.description}</p>
+                  </div>
+                )}
+                
+                <div>
+                  <h3 className="font-semibold mb-2">Thể thức thi đấu</h3>
+                  <TournamentFormatBadge format={tournament.format} />
+                </div>
+
+                <div>
+                  <h3 className="font-semibold mb-2">Thời gian đăng ký</h3>
+                  <p className="text-muted-foreground">
+                    {formatDate(tournament.registration_start)} - {formatDate(tournament.registration_end)}
+                  </p>
+                </div>
+
+                {tournament.organizer && (
+                  <div>
+                    <h3 className="font-semibold mb-2 flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      Ban tổ chức
+                    </h3>
+                    <p className="text-muted-foreground">
+                      {tournament.organizer.name} - {tournament.organizer.email}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Tab: Đăng ký */}
+          <TabsContent value="registrations">
+            <RegistrationList
+              registrations={registrations}
+              onApprove={isAdmin() ? handleApproveRegistration : undefined}
+              onReject={isAdmin() ? handleRejectRegistration : undefined}
+              showActions={isAdmin()}
+            />
+          </TabsContent>
+
+          {/* Tab: Lịch thi đấu */}
+          <TabsContent value="matches">
+            {matches.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <p className="text-muted-foreground">Chưa có lịch thi đấu</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {matches.map((match) => (
+                  <MatchCard
+                    key={match.id}
+                    match={match}
+                    onClick={isAdmin() ? handleMatchClick : undefined}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Tab: Bảng xếp hạng */}
+          <TabsContent value="standings">
+            <GroupStandingsTable standings={standings} />
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Registration Dialog */}
+      <RegistrationFormDialog
+        open={isRegistrationDialogOpen}
+        onOpenChange={setIsRegistrationDialogOpen}
+        onSubmit={handleRegister}
+        tournamentId={tournament.id}
+        teams={teams}
+      />
+
+      {/* Update Score Dialog */}
+      {selectedMatch && (
+        <UpdateScoreDialog
+          open={isScoreDialogOpen}
+          onOpenChange={setIsScoreDialogOpen}
+          onSubmit={handleUpdateScore}
+          homeTeamName={selectedMatch.home_team?.name || 'Home'}
+          awayTeamName={selectedMatch.away_team?.name || 'Away'}
+        />
+      )}
+
       <Footer />
     </div>
   );
