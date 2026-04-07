@@ -57,3 +57,26 @@ export const deleteUser = async (id: number) => {
   const response = await api.delete(`/users/${id}`);
   return response.data;
 };
+
+// ==========================================
+// USER PROFILE (Self-update)
+// ==========================================
+
+export interface UpdateProfileData {
+  name?: string;
+  phone?: string;
+  password?: string;
+  password_confirmation?: string;
+}
+
+// User tự cập nhật profile của mình
+export const updateProfile = async (data: UpdateProfileData) => {
+  const response = await api.put('/profile', data);
+  return response.data;
+};
+
+// Lấy thông tin user hiện tại
+export const getCurrentUser = async () => {
+  const response = await api.get('/auth/me');
+  return response.data;
+};

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -6,8 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RegistrationRequest } from '@/services/registrationService';
 import { Team } from '@/services/teamService';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Plus } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { TeamFormDialog } from '@/components/Team/TeamFormDialog';
 
 interface RegistrationFormDialogProps {
   open: boolean;
@@ -15,7 +17,9 @@ interface RegistrationFormDialogProps {
   onSubmit: (data: RegistrationRequest) => Promise<void>;
   tournamentId: number;
   teams: Team[];
-  myTeams?: Team[]; // Teams where user is captain
+  myTeams?: Team[];
+  /** Callback để reload danh sách teams sau khi tạo mới */
+  onTeamCreated?: (team: Team) => void;
 }
 
 export const RegistrationFormDialog = ({
@@ -24,11 +28,14 @@ export const RegistrationFormDialog = ({
   onSubmit,
   tournamentId,
   teams,
-  myTeams = []
+  myTeams = [],
+  onTeamCreated,
 }: RegistrationFormDialogProps) => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<number>(0);
+  const [teamFormOpen, setTeamFormOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,9 +72,12 @@ export const RegistrationFormDialog = ({
     }
   };
 
-  const availableTeams = myTeams.length > 0 ? myTeams : teams;
+  const availableTeams = Array.isArray(myTeams) && myTeams.length > 0
+    ? myTeams
+    : Array.isArray(teams) ? teams : [];
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
@@ -78,13 +88,32 @@ export const RegistrationFormDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
-            {availableTeams.length === 0 ? (
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  Bạn chưa có đội bóng nào. Vui lòng tạo đội bóng trước khi đăng ký.
-                </AlertDescription>
-              </Alert>
+          {availableTeams.length === 0 ? (
+              <div className="space-y-3">
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Bạn chưa có đội bóng nào. Hãy tạo đội bóng để đăng ký tham gia giải đấu.
+                  </AlertDescription>
+                </Alert>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    className="flex-1 gap-2"
+                    onClick={() => setTeamFormOpen(true)}
+                  >
+                    <Plus className="w-4 h-4" /> Tạo đội bóng ngay
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => { onOpenChange(false); navigate('/my-team'); }}
+                  >
+                    Quản lý đội bóng
+                  </Button>
+                </div>
+              </div>
             ) : (
               <div className="space-y-2">
                 <Label htmlFor="team_id">
@@ -126,5 +155,18 @@ export const RegistrationFormDialog = ({
         </form>
       </DialogContent>
     </Dialog>
+
+    {/* Inline team creation dialog */}
+    <TeamFormDialog
+      open={teamFormOpen}
+      onOpenChange={setTeamFormOpen}
+      team={null}
+      onSuccess={(team) => {
+        if (onTeamCreated) onTeamCreated(team);
+        setSelectedTeamId(team.id);
+        setTeamFormOpen(false);
+      }}
+    />
+  </>
   );
 };

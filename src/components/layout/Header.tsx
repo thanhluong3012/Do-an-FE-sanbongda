@@ -2,8 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth, ROLES } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Menu, X, MapPin, Calendar, Trophy, User, LogOut, Building2, LayoutDashboard, Clock, Users } from "lucide-react";
-import {
+import { Menu, X, MapPin, Calendar, Trophy, User, LogOut, Building2, LayoutDashboard, Clock, Users, Shield } from "lucide-react";import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -111,6 +110,27 @@ const Header = () => {
                       <DropdownMenuSeparator />
                     </>
                   )}
+                  {/* Thông tin cá nhân */}
+                  <DropdownMenuItem asChild>
+                    <Link to="/profile" className="cursor-pointer">
+                      <User className="w-4 h-4 mr-2" />
+                      Thông tin cá nhân
+                    </Link>
+                  </DropdownMenuItem>
+                  {/* Quản lý giải đấu - hiện với mọi user đã đăng nhập */}
+                  <DropdownMenuItem asChild>
+                    <Link to="/my-tournaments" className="cursor-pointer">
+                      <Trophy className="w-4 h-4 mr-2" />
+                      Quản lý giải đấu
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/my-team" className="cursor-pointer">
+                      <Shield className="w-4 h-4 mr-2" />
+                      Quản lý đội bóng
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   {/* Chỉ hiển thị "Lịch sử đặt sân" cho member (không phải admin/owner/staff) */}
                   {!isAdmin() && !isOwner() && !isStaff() && (
                     <>

@@ -11,7 +11,7 @@ import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Email không hợp lệ');
-const passwordSchema = z.string().min(8, 'Mật khẩu phải có ít nhất 8 ký tự');
+const passwordSchema = z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự');
 const nameSchema = z.string().min(2, 'Tên phải có ít nhất 2 ký tự');
 
 const Auth = () => {

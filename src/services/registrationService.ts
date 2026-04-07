@@ -57,8 +57,15 @@ export const registrationService = {
   // Lấy danh sách đăng ký
   getAll: async (params?: RegistrationQueryParams): Promise<TournamentRegistration[]> => {
     try {
-      const response = await api.get<ApiResponse<TournamentRegistration[]>>('/tournament-registrations', { params });
-      return response.data.data || [];
+      const response = await api.get('/tournament-registrations', { params });
+      const raw = response.data;
+      // Format 1: { success, data: { data: [...] } } (paginated)
+      if (raw?.data?.data && Array.isArray(raw.data.data)) return raw.data.data;
+      // Format 2: { success, data: [...] }
+      if (Array.isArray(raw?.data)) return raw.data;
+      // Format 3: direct array
+      if (Array.isArray(raw)) return raw;
+      return [];
     } catch (error) {
       console.error('Error fetching registrations:', error);
       throw error;

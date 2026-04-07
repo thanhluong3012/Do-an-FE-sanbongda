@@ -187,4 +187,20 @@ export const fieldComplexService = {
     const response = await api.delete(`/field-hourly-prices/${id}`);
     return response.data?.data || response.data;
   },
+
+  // ============ AVAILABILITY CHECK API ============
+  
+  /**
+   * Check sân availability theo ngày và loại sân
+   * @param clusterId - ID cụm sân
+   * @param date - Ngày cần check (YYYY-MM-DD)
+   * @param fieldType - Loại sân (5v5, 7v7, 11v11)
+   * @returns Danh sách sân với availability info cho từng buổi
+   */
+  checkAvailability: async (clusterId: number, date: string, fieldType: string) => {
+    const response = await api.get(`/public/field-clusters/${clusterId}/availability`, {
+      params: { date, field_type: fieldType }
+    });
+    return response.data?.data || response.data;
+  },
 };

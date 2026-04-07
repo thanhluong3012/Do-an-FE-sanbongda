@@ -102,18 +102,43 @@ export const MatchCard = ({ match, onClick }: MatchCardProps) => {
 
         {/* Match Info */}
         <div className="space-y-2 text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4" />
-            <span>
-              {format(new Date(match.scheduled_time), 'dd/MM/yyyy', { locale: vi })}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4" />
-            <span>
-              {format(new Date(match.scheduled_time), 'HH:mm', { locale: vi })}
-            </span>
-          </div>
+          {match.match_date && match.match_time ? (
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
+              <span>
+                {(() => {
+                  try {
+                    const dateOnly = match.match_date.includes('T') 
+                      ? match.match_date.split('T')[0] 
+                      : match.match_date;
+                    const timeOnly = match.match_time.substring(0, 5);
+                    return format(new Date(`${dateOnly}T${timeOnly}`), 'dd/MM/yyyy • HH:mm', { locale: vi });
+                  } catch {
+                    return 'Lỗi định dạng';
+                  }
+                })()}
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
+                <span>
+                  {match.match_date ? (
+                    format(new Date(match.match_date), 'dd/MM/yyyy', { locale: vi })
+                  ) : (
+                    'Chưa xếp lịch'
+                  )}
+                </span>
+              </div>
+              {match.match_time && (
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  <span>{match.match_time}</span>
+                </div>
+              )}
+            </>
+          )}
           {match.field && (
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4" />

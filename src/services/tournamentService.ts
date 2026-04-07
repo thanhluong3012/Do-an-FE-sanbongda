@@ -1,4 +1,40 @@
 import api from '@/lib/axios';
+import { Match } from './matchService';
+
+// Interface cho Round
+export interface TournamentRound {
+  round_name: string;
+  round_order: number;
+  matches: Match[];
+}
+
+// Interface cho Group
+export interface TournamentGroup {
+  id: number;
+  group_name: string;
+  standings?: Array<{
+    ranking: number;
+    team: { id: number; name: string; logo?: string };
+    points?: number;
+    wins?: number;
+    draws?: number;
+    losses?: number;
+  }>;
+  matches: Match[];
+}
+
+// Interface cho Bracket Structure
+export interface TournamentBracket {
+  format: 'round_robin' | 'knockout' | 'group_knockout';
+  tournament: Tournament;
+  teams: Array<{
+    id: number;
+    name: string;
+    logo?: string;
+  }>;
+  rounds?: TournamentRound[];
+  groups?: TournamentGroup[];
+}
 
 // Interface cho Tournament
 export interface Tournament {
@@ -13,8 +49,16 @@ export interface Tournament {
   start_date: string;
   end_date: string;
   status: 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
+  schedule_published?: boolean; // Trạng thái công khai lịch thi đấu
   field_cluster_id: number;
   organizer_id?: number;
+  
+  // Payment fields
+  payment_method?: 'cash' | 'transfer';
+  payment_status?: 'pending' | 'paid' | 'rejected';
+  payment_proof_url?: string;
+  total_price?: number;
+  
   organizer?: {
     id: number;
     name: string;
@@ -26,13 +70,63 @@ export interface Tournament {
     address?: string;
   };
   registered_teams_count?: number;
+  approved_teams_count?: number;
+  is_full?: boolean;
+  available_slots?: number;
   schedules?: any[];
-  registrations?: any[];
+  registrations?: Array<{
+    id: number;
+    team_id: number;
+    registration_status: string; // Backend field name
+    team?: {
+      id: number;
+      name: string;
+      logo?: string;
+    };
+  }>;
+  teams?: Array<{
+    id: number;
+    name: string;
+    logo?: string;
+  }>;
   groups?: any[];
   rounds?: any[];
   matches?: any[];
   created_at?: string;
   updated_at?: string;
+}
+
+// Interface cho Field Booking
+export interface FieldBooking {
+  id: number;
+  tournament_id: number;
+  field_id: number;
+  booking_date?: string; // Legacy field
+  day_book?: string; // Field name from API
+  start_time: string;
+  end_time: string;
+  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
+  field?: {
+    id: number;
+    name: string;
+    field_type: string;
+    field_cluster?: {
+      id: number;
+      name: string;
+      address?: string;
+    };
+  };
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Interface cho Book Fields Request
+export interface BookFieldsRequest {
+  field_ids: number[];
+  booking_date?: string;
+  start_time?: string;
+  end_time?: string;
+  session_ids?: number[]; // IDs của các buổi đấu
 }
 
 // Interface cho Tournament Request
@@ -47,6 +141,12 @@ export interface TournamentRequest {
   start_date: string;
   end_date: string;
   field_cluster_id: number;
+  field_type?: string; // Loại sân (5v5, 7v7, 11v11) - optional để backward compatible
+  bookings?: Array<{ // Danh sách sân cần book
+    field_id: number;
+    date: string; // YYYY-MM-DD
+    session_type: 'morning' | 'afternoon' | 'evening' | 'full_day'; // Buổi thi đấu
+  }>;
 }
 
 // Interface cho API Response
@@ -66,39 +166,26 @@ export const tournamentService = {
   // Lấy danh sách giải đấu
   getAll: async (params?: TournamentQueryParams): Promise<Tournament[]> => {
     try {
-      const response = await api.get('/tournaments', { params });
-      console.log('🔍 Tournament API Response:', response.data);
-      
-      // Backend có thể trả về nhiều format khác nhau
-      
-      // Format 1: Laravel pagination { success: true, data: { data: [...], current_page: 1, ... } }
+      const response = await api.get('/public/tournaments', { params });
+      // Format 1: Laravel pagination { success: true, data: { data: [...] } }
       if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
-        console.log('✅ Found paginated data:', response.data.data.data.length, 'items');
         return response.data.data.data;
       }
-      
       // Format 2: { success: true, data: [...] }
       if (Array.isArray(response.data?.data)) {
-        console.log('✅ Found array in data:', response.data.data.length, 'items');
         return response.data.data;
       }
-      
-      // Format 3: Trả về trực tiếp mảng [...]
+      // Format 3: direct array
       if (Array.isArray(response.data)) {
-        console.log('✅ Direct array:', response.data.length, 'items');
         return response.data;
       }
-      
       // Format 4: { tournaments: [...] }
       if (response.data?.tournaments && Array.isArray(response.data.tournaments)) {
-        console.log('✅ Found tournaments array:', response.data.tournaments.length, 'items');
         return response.data.tournaments;
       }
-      
-      console.warn('⚠️ Unknown response format:', response.data);
       return [];
     } catch (error) {
-      console.error('❌ Error fetching tournaments:', error);
+      console.error('Error fetching tournaments:', error);
       throw error;
     }
   },
@@ -106,20 +193,27 @@ export const tournamentService = {
   // Chi tiết giải đấu (có quan hệ đầy đủ)
   getById: async (id: number): Promise<Tournament> => {
     try {
-      const response = await api.get(`/tournaments/${id}`);
-      console.log('🔍 Tournament Detail API Response:', response.data);
+      // Luôn dùng API public để dữ liệu nhất quán cho cả đăng nhập và chưa đăng nhập
+      const response = await api.get(`/public/tournaments/${id}`);
+      const raw = response.data;
       
-      // Xử lý nhiều format response
-      if (response.data?.data) {
-        return response.data.data;
+      // { success, data: { id, name, registrations, ... } }
+      if (raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) && raw.data?.id) {
+        return raw.data;
       }
-      if (response.data?.tournament) {
-        return response.data.tournament;
+      // { tournament: { ... } }
+      if (raw?.tournament?.id) {
+        return raw.tournament;
       }
-      // Nếu không có wrapper, trả về trực tiếp
-      return response.data;
+      // Direct object
+      if (raw?.id) {
+        return raw;
+      }
+      
+      console.error('❌ Could not parse tournament data:', raw);
+      throw new Error('Không tìm thấy dữ liệu giải đấu hợp lệ từ API');
     } catch (error) {
-      console.error(`❌ Error fetching tournament ${id}:`, error);
+      console.error(`Error fetching tournament ${id}:`, error);
       throw error;
     }
   },
@@ -138,10 +232,32 @@ export const tournamentService = {
   // Publish giải đấu (Mở đăng ký)
   publish: async (id: number): Promise<Tournament> => {
     try {
-      const response = await api.put<ApiResponse<Tournament>>(`/tournaments/${id}/publish`);
+      const response = await api.post<ApiResponse<Tournament>>(`/tournaments/${id}/publish`);
       return response.data.data;
     } catch (error) {
       console.error(`Error publishing tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Publish lịch thi đấu (Công khai cho user xem)
+  publishSchedule: async (id: number): Promise<Tournament> => {
+    try {
+      const response = await api.post<ApiResponse<Tournament>>(`/tournaments/${id}/publish-schedule`);
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error publishing schedule for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Unpublish lịch thi đấu (Ẩn lịch khỏi public)
+  unpublishSchedule: async (id: number): Promise<Tournament> => {
+    try {
+      const response = await api.post<ApiResponse<Tournament>>(`/tournaments/${id}/unpublish-schedule`);
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error unpublishing schedule for tournament ${id}:`, error);
       throw error;
     }
   },
@@ -163,6 +279,168 @@ export const tournamentService = {
       await api.delete(`/tournaments/${id}`);
     } catch (error) {
       console.error(`Error deleting tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Lấy giải đấu của tôi (organizer)
+  getMyTournaments: async (): Promise<Tournament[]> => {
+    try {
+      const response = await api.get('/tournaments', { params: { my_tournaments: true } });
+      if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
+        return response.data.data.data;
+      }
+      if (Array.isArray(response.data?.data)) {
+        return response.data.data;
+      }
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching my tournaments:', error);
+      throw error;
+    }
+  },
+
+  // ===== SCHEDULE MANAGEMENT =====
+  
+  // Tự động sinh lịch thi đấu - POST /api/tournaments/{id}/generate-schedule
+  generateSchedule: async (id: number, params?: { 
+    start_date?: string; 
+    end_date?: string; 
+    field_ids?: number[] 
+  }): Promise<{ message: string }> => {
+    try {
+      const response = await api.post<ApiResponse<{ message: string }>>(
+        `/tournaments/${id}/generate-schedule`,
+        params || {}
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error generating schedule for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Lấy sơ đồ bracket
+  // - Organizer/Admin: GET /api/tournaments/{id}/bracket (Auth - xem cả lịch chưa publish)
+  // - User thường: GET /api/public/tournaments/{id}/bracket (Public - chỉ xem lịch đã publish)
+  getBracket: async (id: number, isOrganizer: boolean = false): Promise<TournamentBracket> => {
+    try {
+      // Organizer/Admin dùng auth endpoint, user thường dùng public endpoint
+      const endpoint = isOrganizer 
+        ? `/tournaments/${id}/bracket` 
+        : `/public/tournaments/${id}/bracket`;
+      
+      const response = await api.get(endpoint);
+      const raw = response.data;
+      // Format: { success: true, data: { tournament, rounds, groups, matches, teams } }
+      if (raw?.data) {
+        return raw.data;
+      }
+      // Format: direct object
+      if (raw?.tournament) {
+        return raw;
+      }
+      throw new Error('Invalid bracket data format');
+    } catch (error) {
+      console.error(`Error fetching bracket for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Xóa lịch thi đấu - DELETE /api/tournaments/{id}/schedule
+  deleteSchedule: async (id: number): Promise<void> => {
+    try {
+      await api.delete(`/tournaments/${id}/schedule`);
+    } catch (error) {
+      console.error(`Error deleting schedule for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // ===== FIELD BOOKING MANAGEMENT =====
+  
+  // Book sân cho giải đấu - POST /api/tournaments/{id}/book-fields
+  bookFields: async (id: number, data: BookFieldsRequest): Promise<{ message: string; bookings: FieldBooking[] }> => {
+    try {
+      const response = await api.post<ApiResponse<{ message: string; bookings: FieldBooking[] }>>(
+        `/tournaments/${id}/book-fields`,
+        data
+      );
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error booking fields for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Lấy danh sách sân đã book - GET /api/tournaments/{id}/field-bookings
+  getFieldBookings: async (id: number): Promise<FieldBooking[]> => {
+    try {
+      const response = await api.get(`/tournaments/${id}/field-bookings`);
+      const data = response.data;
+      
+      // Backend trả về { data: { bookings: [], total_bookings: 0, total_price: 0 } }
+      if (data?.data?.bookings && Array.isArray(data.data.bookings)) {
+        return data.data.bookings;
+      }
+      // Fallback: { bookings: [] } trực tiếp
+      if (data?.bookings && Array.isArray(data.bookings)) {
+        return data.bookings;
+      }
+      // Fallback: Array trực tiếp
+      if (Array.isArray(data?.data)) {
+        return data.data;
+      }
+      // Fallback: response.data is array
+      if (Array.isArray(data)) {
+        return data;
+      }
+      return [];
+    } catch (error) {
+      console.error(`❌ Error fetching field bookings for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Xóa booking sân - DELETE /api/tournaments/{id}/field-bookings/{booking_id}
+  deleteFieldBooking: async (id: number, bookingId: number): Promise<void> => {
+    try {
+      await api.delete(`/tournaments/${id}/field-bookings/${bookingId}`);
+    } catch (error) {
+      console.error(`Error deleting field booking ${bookingId}:`, error);
+      throw error;
+    }
+  },
+
+  // ==========================================
+  // PAYMENT MANAGEMENT
+  // ==========================================
+
+  // Upload payment proof (bill chuyển khoản)
+  uploadPaymentProof: async (id: number, formData: FormData): Promise<any> => {
+    try {
+      const response = await api.post(`/tournaments/${id}/upload-payment-proof`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error uploading payment proof for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Owner xác nhận thanh toán (approve/reject)
+  confirmPayment: async (id: number, action: 'approve' | 'reject'): Promise<any> => {
+    try {
+      const response = await api.put(`/tournaments/${id}/confirm-payment`, { action });
+      return response.data;
+    } catch (error) {
+      console.error(`Error confirming payment for tournament ${id}:`, error);
       throw error;
     }
   },

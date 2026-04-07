@@ -24,6 +24,10 @@ import {
   type FieldHourlyPrice,
 } from '@/services/fieldComplexService';
 import {
+  tournamentSessionPriceService,
+  type TournamentSessionPrice,
+} from '@/services/tournamentSessionPriceService';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -59,11 +63,13 @@ const OwnerFields = () => {
   const [expandedCluster, setExpandedCluster] = useState<number | null>(null);
   const [clusterFields, setClusterFields] = useState<{ [key: number]: SubField[] }>({});
   const [clusterPrices, setClusterPrices] = useState<{ [key: number]: FieldHourlyPrice[] }>({});
+  const [clusterTournamentPrices, setClusterTournamentPrices] = useState<{ [key: number]: TournamentSessionPrice[] }>({});
   
   // Dialog states
   const [clusterDialog, setClusterDialog] = useState(false);
   const [fieldDialog, setFieldDialog] = useState(false);
   const [priceDialog, setPriceDialog] = useState(false);
+  const [tournamentPriceDialog, setTournamentPriceDialog] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; type: string; id: number; clusterId?: number }>({ 
     open: false, 
     type: '', 
@@ -74,6 +80,7 @@ const OwnerFields = () => {
   const [editingCluster, setEditingCluster] = useState<FieldComplex | null>(null);
   const [editingField, setEditingField] = useState<SubField | null>(null);
   const [editingPrice, setEditingPrice] = useState<FieldHourlyPrice | null>(null);
+  const [editingTournamentPrice, setEditingTournamentPrice] = useState<TournamentSessionPrice | null>(null);
   const [selectedClusterId, setSelectedClusterId] = useState<number | null>(null);
   
   // Cluster form
@@ -101,6 +108,14 @@ const OwnerFields = () => {
     field_type: '5v5' as '5v5' | '7v7' | '11v11',
     day_type: 'weekday' as 'weekday' | 'weekend',
     price_hour: 0,
+  });
+
+  // Tournament price form
+  const [tournamentPriceForm, setTournamentPriceForm] = useState({
+    field_type: '5v5' as '5v5' | '7v7' | '11v11',
+    day_type: 'weekday' as 'weekday' | 'weekend',
+    session_type: 'morning' as 'morning' | 'afternoon' | 'evening' | 'full_day',
+    price_per_session: 0,
   });
 
   useEffect(() => {
@@ -131,9 +146,13 @@ const OwnerFields = () => {
       const fields = await fieldComplexService.getFieldsByClusterId(clusterId);
       setClusterFields(prev => ({ ...prev, [clusterId]: Array.isArray(fields) ? fields : [] }));
       
-      // Load prices
+      // Load hourly prices
       const prices = await fieldComplexService.getFieldClusterPrices(clusterId);
       setClusterPrices(prev => ({ ...prev, [clusterId]: Array.isArray(prices) ? prices : [] }));
+      
+      // Load tournament session prices
+      const tournamentPrices = await tournamentSessionPriceService.getByClusterId(clusterId);
+      setClusterTournamentPrices(prev => ({ ...prev, [clusterId]: Array.isArray(tournamentPrices) ? tournamentPrices : [] }));
     } catch (error: any) {
       console.error('Error loading cluster details:', error);
       toast({
@@ -446,6 +465,117 @@ const OwnerFields = () => {
     }
   };
 
+  // Tournament Price CRUD
+  const handleOpenTournamentPriceDialog = (clusterId: number, price?: TournamentSessionPrice) => {
+    setSelectedClusterId(clusterId);
+    if (price) {
+      setEditingTournamentPrice(price);
+      setTournamentPriceForm({
+        field_type: price.field_type,
+        day_type: price.day_type,
+        session_type: price.session_type,
+        price_per_session: price.price_per_session,
+      });
+    } else {
+      setEditingTournamentPrice(null);
+      setTournamentPriceForm({
+        field_type: '5v5',
+        day_type: 'weekday',
+        session_type: 'morning',
+        price_per_session: 0,
+      });
+    }
+    setTournamentPriceDialog(true);
+  };
+
+  const handleSaveTournamentPrice = async () => {
+    try {
+      if (!selectedClusterId) return;
+
+      if (tournamentPriceForm.price_per_session <= 0) {
+        toast({
+          title: 'Lỗi',
+          description: 'Giá phải lớn hơn 0 VNĐ',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Check duplicate
+      if (!editingTournamentPrice && clusterTournamentPrices[selectedClusterId]) {
+        const isDuplicate = clusterTournamentPrices[selectedClusterId].some(
+          p => p.field_type === tournamentPriceForm.field_type && 
+               p.day_type === tournamentPriceForm.day_type &&
+               p.session_type === tournamentPriceForm.session_type
+        );
+        
+        if (isDuplicate) {
+          toast({
+            title: 'Lỗi',
+            description: 'Giá này đã tồn tại. Vui lòng chỉnh sửa giá hiện có.',
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
+
+      const data = {
+        ...tournamentPriceForm,
+        field_cluster_id: selectedClusterId,
+      };
+
+      if (editingTournamentPrice) {
+        await tournamentSessionPriceService.update(editingTournamentPrice.id, data);
+        toast({ title: 'Thành công', description: 'Đã cập nhật giá giải đấu' });
+      } else {
+        console.log('Creating tournament price with data:', data);
+        const response = await tournamentSessionPriceService.create(data);
+        console.log('Create response:', response);
+        toast({ title: 'Thành công', description: 'Đã thêm giá giải đấu' });
+      }
+
+      setTournamentPriceDialog(false);
+      loadClusterDetails(selectedClusterId);
+    } catch (error: any) {
+      console.error('Error saving tournament price:', error);
+      console.error('Error response:', error?.response);
+      console.error('Error data:', error?.response?.data);
+      console.error('Error message:', error?.response?.data?.message);
+      console.error('Error errors:', JSON.stringify(error?.response?.data?.errors, null, 2));
+      console.error('Full error object:', JSON.stringify(error, null, 2));
+      
+      // Show detailed validation errors
+      let errorMessage = error?.response?.data?.message || 'Không thể lưu giá giải đấu';
+      if (error?.response?.data?.errors) {
+        const errors = error.response.data.errors;
+        const errorDetails = Object.keys(errors).map(key => `${key}: ${errors[key]}`).join(', ');
+        errorMessage = `${errorMessage} - ${errorDetails}`;
+      }
+      
+      toast({
+        title: 'Lỗi',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDeleteTournamentPrice = async (id: number, clusterId: number) => {
+    try {
+      await tournamentSessionPriceService.delete(id);
+      toast({ title: 'Thành công', description: 'Đã xóa giá giải đấu' });
+      loadClusterDetails(clusterId);
+      setDeleteDialog({ open: false, type: '', id: 0 });
+    } catch (error: any) {
+      console.error('Error deleting tournament price:', error);
+      toast({
+        title: 'Lỗi',
+        description: error?.response?.data?.message || 'Không thể xóa giá giải đấu',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (loading) {
     return (
       <RoleBasedLayout>
@@ -658,7 +788,7 @@ const OwnerFields = () => {
                                         {weekdayPrice ? (
                                           <div className="flex items-center justify-end gap-2">
                                             <span className="text-green-600 font-semibold">
-                                              {weekdayPrice.price_hour.toLocaleString('vi-VN')} ₫
+                                              {Number(weekdayPrice.price_hour).toLocaleString('vi-VN', { maximumFractionDigits: 0 })} ₫
                                             </span>
                                             <div className="flex gap-1">
                                               <Button
@@ -692,7 +822,7 @@ const OwnerFields = () => {
                                         {weekendPrice ? (
                                           <div className="flex items-center justify-end gap-2">
                                             <span className="text-green-600 font-semibold">
-                                              {weekendPrice.price_hour.toLocaleString('vi-VN')} ₫
+                                              {Number(weekendPrice.price_hour).toLocaleString('vi-VN', { maximumFractionDigits: 0 })} ₫
                                             </span>
                                             <div className="flex gap-1">
                                               <Button
@@ -730,6 +860,151 @@ const OwnerFields = () => {
                             </table>
                           </div>
                         )}
+
+                        {/* Tournament Prices Section - Dưới Bảng Giá */}
+                        <div className="mt-6 pt-6 border-t border-gray-200">
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <h3 className="font-semibold text-lg flex items-center gap-2">
+                              ⚽ Giá Giải Đấu
+                              <Badge variant="outline" className="ml-2">Theo buổi</Badge>
+                            </h3>
+                            <p className="text-sm text-gray-500 mt-1">
+                              Cấu hình giá cho các buổi thi đấu (Sáng, Chiều, Tối, Cả ngày)
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenTournamentPriceDialog(cluster.id)}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            Thêm Giá
+                          </Button>
+                        </div>
+                        
+                        {!clusterTournamentPrices[cluster.id] || clusterTournamentPrices[cluster.id].length === 0 ? (
+                          <div className="text-center py-6 text-gray-500 text-sm">
+                            Chưa có cấu hình giá giải đấu
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {['5v5', '7v7', '11v11'].map((fieldType) => {
+                              const fieldPrices = clusterTournamentPrices[cluster.id].filter(
+                                p => p.field_type === fieldType
+                              );
+                              
+                              if (fieldPrices.length === 0) return null;
+                              
+                              const weekdayPrices = fieldPrices.filter(p => p.day_type === 'weekday');
+                              const weekendPrices = fieldPrices.filter(p => p.day_type === 'weekend');
+                              
+                              const sessionLabels: any = {
+                                morning: '🌅 Sáng',
+                                afternoon: '☀️ Chiều',
+                                evening: '🌙 Tối',
+                                full_day: '🌞 Cả ngày',
+                              };
+                              
+                              return (
+                                <div key={fieldType} className="border rounded-lg p-4 bg-white">
+                                  <h4 className="font-semibold text-base mb-3">
+                                    ⚽ Sân {fieldType.toUpperCase()}
+                                  </h4>
+                                  
+                                  <div className="space-y-3">
+                                    {weekdayPrices.length > 0 && (
+                                      <div>
+                                        <div className="text-sm font-medium text-gray-600 mb-2">
+                                          📅 Ngày thường (T2-T6)
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                          {weekdayPrices.map((price) => (
+                                            <div key={price.id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                                              <span>{sessionLabels[price.session_type]}</span>
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-green-600 font-semibold">
+                                                  {Number(price.price_per_session).toLocaleString('vi-VN', { maximumFractionDigits: 0 })} ₫
+                                                </span>
+                                                <div className="flex gap-1">
+                                                  <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-6 w-6"
+                                                    onClick={() => handleOpenTournamentPriceDialog(cluster.id, price)}
+                                                  >
+                                                    <Edit className="w-3 h-3" />
+                                                  </Button>
+                                                  <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-6 w-6"
+                                                    onClick={() => setDeleteDialog({ 
+                                                      open: true, 
+                                                      type: 'tournament_price', 
+                                                      id: price.id,
+                                                      clusterId: cluster.id 
+                                                    })}
+                                                  >
+                                                    <Trash2 className="w-3 h-3 text-destructive" />
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    
+                                    {weekendPrices.length > 0 && (
+                                      <div>
+                                        <div className="text-sm font-medium text-gray-600 mb-2">
+                                          🎉 Cuối tuần (T7-CN)
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                          {weekendPrices.map((price) => (
+                                            <div key={price.id} className="flex items-center justify-between p-2 bg-blue-50 rounded text-sm">
+                                              <span>{sessionLabels[price.session_type]}</span>
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-green-600 font-semibold">
+                                                  {Number(price.price_per_session).toLocaleString('vi-VN', { maximumFractionDigits: 0 })} ₫
+                                                </span>
+                                                <div className="flex gap-1">
+                                                  <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-6 w-6"
+                                                    onClick={() => handleOpenTournamentPriceDialog(cluster.id, price)}
+                                                  >
+                                                    <Edit className="w-3 h-3" />
+                                                  </Button>
+                                                  <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-6 w-6"
+                                                    onClick={() => setDeleteDialog({ 
+                                                      open: true, 
+                                                      type: 'tournament_price', 
+                                                      id: price.id,
+                                                      clusterId: cluster.id 
+                                                    })}
+                                                  >
+                                                    <Trash2 className="w-3 h-3 text-destructive" />
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        </div>
                       </div>
                     </div>
                   </CardContent>
@@ -991,7 +1266,7 @@ const OwnerFields = () => {
                   placeholder="300000"
                 />
                 <p className="text-xs text-gray-500">
-                  Giá hiện tại: {priceForm.price_hour.toLocaleString('vi-VN')} VNĐ/giờ
+                  Giá hiện tại: {Number(priceForm.price_hour).toLocaleString('vi-VN', { maximumFractionDigits: 0 })} VNĐ/giờ
                 </p>
               </div>
             </div>
@@ -1006,13 +1281,108 @@ const OwnerFields = () => {
           </DialogContent>
         </Dialog>
 
+        {/* Tournament Price Dialog */}
+        <Dialog open={tournamentPriceDialog} onOpenChange={setTournamentPriceDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {editingTournamentPrice ? 'Chỉnh Sửa Giá Giải Đấu' : 'Thêm Giá Giải Đấu'}
+              </DialogTitle>
+              <DialogDescription>
+                Cấu hình giá theo buổi cho giải đấu
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="tournament_field_type">Loại sân</Label>
+                <Select
+                  value={tournamentPriceForm.field_type}
+                  onValueChange={(value: any) => setTournamentPriceForm({ ...tournamentPriceForm, field_type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5v5">⚽ Sân 5 người</SelectItem>
+                    <SelectItem value="7v7">⚽ Sân 7 người</SelectItem>
+                    <SelectItem value="11v11">⚽ Sân 11 người</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="tournament_day_type">Loại ngày</Label>
+                <Select
+                  value={tournamentPriceForm.day_type}
+                  onValueChange={(value: any) => setTournamentPriceForm({ ...tournamentPriceForm, day_type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="weekday">📅 Ngày thường (T2-T6)</SelectItem>
+                    <SelectItem value="weekend">🎉 Cuối tuần (T7-CN)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="session_type">Buổi thi đấu</Label>
+                <Select
+                  value={tournamentPriceForm.session_type}
+                  onValueChange={(value: any) => setTournamentPriceForm({ ...tournamentPriceForm, session_type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="morning">🌅 Sáng (6:00-12:00)</SelectItem>
+                    <SelectItem value="afternoon">☀️ Chiều (12:00-18:00)</SelectItem>
+                    <SelectItem value="evening">🌙 Tối (18:00-23:00)</SelectItem>
+                    <SelectItem value="full_day">🌞 Cả ngày (6:00-23:00)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="tournament_price">Giá (VNĐ)</Label>
+                <Input
+                  id="tournament_price"
+                  type="number"
+                  min="0"
+                  step="10000"
+                  value={tournamentPriceForm.price_per_session}
+                  onChange={(e) => setTournamentPriceForm({ ...tournamentPriceForm, price_per_session: Number(e.target.value) })}
+                  placeholder="500000"
+                />
+                <p className="text-xs text-gray-500">
+                  Giá hiện tại: {Number(tournamentPriceForm.price_per_session).toLocaleString('vi-VN', { maximumFractionDigits: 0 })} VNĐ/buổi
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setTournamentPriceDialog(false)}>
+                Hủy
+              </Button>
+              <Button onClick={handleSaveTournamentPrice}>
+                {editingTournamentPrice ? 'Cập Nhật' : 'Tạo Mới'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Delete Confirmation Dialog */}
         <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ ...deleteDialog, open })}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Xác nhận xóa</AlertDialogTitle>
               <AlertDialogDescription>
-                Bạn có chắc chắn muốn xóa {deleteDialog.type === 'cluster' ? 'cụm sân' : deleteDialog.type === 'field' ? 'sân' : 'cấu hình giá'} này không?
+                Bạn có chắc chắn muốn xóa {
+                  deleteDialog.type === 'cluster' ? 'cụm sân' : 
+                  deleteDialog.type === 'field' ? 'sân' : 
+                  deleteDialog.type === 'tournament_price' ? 'giá giải đấu' :
+                  'cấu hình giá'
+                } này không?
                 Hành động này không thể hoàn tác.
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -1026,6 +1396,8 @@ const OwnerFields = () => {
                     handleDeleteField(deleteDialog.id, deleteDialog.clusterId);
                   } else if (deleteDialog.type === 'price' && deleteDialog.clusterId) {
                     handleDeletePrice(deleteDialog.id, deleteDialog.clusterId);
+                  } else if (deleteDialog.type === 'tournament_price' && deleteDialog.clusterId) {
+                    handleDeleteTournamentPrice(deleteDialog.id, deleteDialog.clusterId);
                   }
                 }}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"

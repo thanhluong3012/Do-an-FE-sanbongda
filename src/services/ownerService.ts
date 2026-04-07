@@ -4,9 +4,8 @@ export interface Owner {
   id: number;
   user_id: number;
   business_name?: string;
-  business_license?: string;
+  code_id?: string;
   address?: string;
-  phone?: string;
   user?: {
     id: number;
     name: string;
@@ -19,9 +18,8 @@ export interface Owner {
 export interface CreateOwnerData {
   user_id: number;
   business_name?: string;
-  business_license?: string;
+  code_id?: string;
   address?: string;
-  phone?: string;
 }
 
 // Lấy danh sách owners (Admin, Owner)
@@ -51,5 +49,39 @@ export const updateOwner = async (id: number, data: Partial<CreateOwnerData>) =>
 // Xóa owner
 export const deleteOwner = async (id: number) => {
   const response = await api.delete(`/owners/${id}`);
+  return response.data;
+};
+
+// ==========================================
+// OWNER PROFILE MANAGEMENT
+// ==========================================
+
+export interface UpdateOwnerProfileData {
+  business_name?: string;
+  address?: string;
+  code_id?: string;
+}
+
+// Owner tự cập nhật profile của mình
+export const updateOwnerProfile = async (data: UpdateOwnerProfileData) => {
+  const response = await api.put('/owner/profile', data);
+  return response.data;
+};
+
+// Upload QR code cho thanh toán
+export const uploadQRCode = async (file: File) => {
+  const formData = new FormData();
+  formData.append('qr_code', file);
+  const response = await api.post('/owner/upload-qr', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
+
+// Lấy QR code
+export const getQRCode = async () => {
+  const response = await api.get('/owner/qr-code');
   return response.data;
 };

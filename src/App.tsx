@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Booking from "./pages/Booking";
@@ -13,10 +14,14 @@ import FieldComplexDetail from "./pages/FieldComplexDetail";
 import Tournament from "./pages/Tournament";
 import Tournaments from "./pages/Tournaments";
 import TournamentDetail from "./pages/TournamentDetail";
+import CreateTournament from "./pages/CreateTournament";
 import ApiDebug from "./pages/ApiDebug";
 import NotFound from "./pages/NotFound";
 import FieldOwnerRegistration from "./pages/FieldOwnerRegistration";
 import MyBookings from "./pages/MyBookings";
+import MyTournaments from "./pages/MyTournaments";
+import MyTeam from "./pages/MyTeam";
+import Profile from "./pages/Profile";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 // Admin Pages
@@ -31,6 +36,7 @@ import OwnerStaff from "./pages/owner/OwnerStaff";
 import OwnerFields from "./pages/owner/OwnerFields";
 import OwnerBookings from "./pages/owner/OwnerBookings";
 import OwnerPayments from "./pages/owner/OwnerPayments";
+import OwnerPaymentConfirmation from "./pages/owner/OwnerPaymentConfirmation";
 import OwnerRevenue from "./pages/owner/OwnerRevenue";
 
 // Staff Pages
@@ -43,7 +49,8 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
+    <ErrorBoundary>
+      <TooltipProvider>
       <AuthProvider>
         <Toaster />
         <Sonner />
@@ -66,6 +73,27 @@ const App = () => (
                 <MyBookings />
               </ProtectedRoute>
             } />
+
+            {/* My Tournaments - Quản lý giải đấu của tôi */}
+            <Route path="/my-tournaments" element={
+              <ProtectedRoute>
+                <MyTournaments />
+              </ProtectedRoute>
+            } />
+
+            {/* My Team - Quản lý đội bóng */}
+            <Route path="/my-team" element={
+              <ProtectedRoute>
+                <MyTeam />
+              </ProtectedRoute>
+            } />
+
+            {/* Profile - Thông tin cá nhân */}
+            <Route path="/profile" element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            } />
             
             {/* Public pages */}
             <Route path="/fields" element={<Fields />} />
@@ -77,7 +105,7 @@ const App = () => (
             {/* Tournament pages */}
             <Route path="/tournament/create" element={
               <ProtectedRoute>
-                <Tournament />
+                <CreateTournament />
               </ProtectedRoute>
             } />
             
@@ -95,6 +123,7 @@ const App = () => (
             <Route path="/owner/fields" element={<ProtectedRoute requiredRole={2}><OwnerFields /></ProtectedRoute>} />
             <Route path="/owner/bookings" element={<ProtectedRoute requiredRole={2}><OwnerBookings /></ProtectedRoute>} />
             <Route path="/owner/payments" element={<ProtectedRoute requiredRole={2}><OwnerPayments /></ProtectedRoute>} />
+            <Route path="/owner/payment-confirmation" element={<ProtectedRoute requiredRole={2}><OwnerPaymentConfirmation /></ProtectedRoute>} />
             <Route path="/owner/revenue" element={<ProtectedRoute requiredRole={2}><OwnerRevenue /></ProtectedRoute>} />
             
             {/* Staff Routes - Role: STAFF */}
@@ -108,8 +137,7 @@ const App = () => (
           </Routes>
         </BrowserRouter>
       </AuthProvider>
-    </TooltipProvider>
-  </QueryClientProvider>
+    </TooltipProvider>    </ErrorBoundary>  </QueryClientProvider>
 );
 
 export default App;

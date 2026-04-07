@@ -31,19 +31,17 @@ api.interceptors.response.use(
   (error) => {
     // Xử lý lỗi chung
     if (error.response?.status === 401) {
-      // Token hết hạn hoặc không hợp lệ
-      console.warn('⚠️ 401 Unauthorized - Clearing auth data');
-      
-      // Clear localStorage
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('auth_timestamp');
-      
-      // Chỉ redirect nếu không phải đang ở trang auth
-      const currentPath = window.location.pathname;
-      if (!currentPath.includes('/auth')) {
-        console.log('🔄 Redirecting to login page');
-        window.location.href = '/auth';
+      // Chỉ xóa token khi request CÓ GỬI token mà vẫn bị 401
+      // (= token hết hạn / bị thu hồi). Không xóa khi gọi public API
+      // vì sẽ gây chain failure cho các request auth khác đang chạy song song.
+      const requestHadToken = !!error.config?.headers?.Authorization;
+      if (requestHadToken) {
+        console.warn('⚠️ 401 Unauthorized (with token) - Clearing auth data');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('auth_timestamp');
+      } else {
+        console.warn('⚠️ 401 Unauthorized (no token) - Skipping token clear');
       }
     }
     

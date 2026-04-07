@@ -45,24 +45,17 @@ const Tournaments = () => {
     setIsLoading(true);
     try {
       const data = await tournamentService.getAll();
-      console.log('📊 Received data type:', typeof data, 'Is Array:', Array.isArray(data));
-      console.log('📊 Data:', data);
-      
-      // Đảm bảo luôn là array
-      if (Array.isArray(data)) {
-        setTournaments(data);
-      } else {
-        console.warn('⚠️ Data is not an array, using empty array');
-        setTournaments([]);
-      }
+      setTournaments(Array.isArray(data) ? data : []);
     } catch (error: any) {
-      console.error('❌ Error loading tournaments:', error);
-      toast({
-        title: 'Lỗi kết nối API',
-        description: error.response?.data?.message || 'Không thể tải danh sách giải đấu. Vui lòng kiểm tra backend đã chạy chưa.',
-        variant: 'destructive',
-      });
-      // Set empty array để trang không bị trắng
+      // 401 = backend chưa cho phép public hoặc token hết hạn
+      // → chỉ hiển thị rỗng, không toast lỗi gây confuse
+      if (error.response?.status !== 401) {
+        toast({
+          title: 'Lỗi',
+          description: error.response?.data?.message || 'Không thể tải danh sách giải đấu.',
+          variant: 'destructive',
+        });
+      }
       setTournaments([]);
     } finally {
       setIsLoading(false);
