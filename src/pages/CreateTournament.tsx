@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,9 +14,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { fieldComplexService, SubField } from '@/services/fieldComplexService';
 import { tournamentService, TournamentRequest } from '@/services/tournamentService';
 import { tournamentSessionPriceService, TournamentSessionPrice } from '@/services/tournamentSessionPriceService';
-import { getQRCode } from '@/services/ownerService';
+import { getOwner } from '@/services/ownerService';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CalendarIcon, CheckCircle2, MapPin, Clock, Info, ArrowLeft, ArrowRight, DollarSign, CreditCard, Wallet, Upload as UploadIcon } from 'lucide-react';
+import { Loader2, CalendarIcon, CheckCircle2, MapPin, Clock, Info, ArrowLeft, ArrowRight, DollarSign, CreditCard, Wallet, Upload as UploadIcon, FileText, X } from 'lucide-react';
+import { ImageUpload } from '@/components/ui/image-upload';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -95,9 +96,12 @@ export default function CreateTournament() {
   const [totalPrice, setTotalPrice] = useState(0);
   const [sessionPrices, setSessionPrices] = useState<TournamentSessionPrice[]>([]);
   const [ownerQRCode, setOwnerQRCode] = useState<string | null>(null);
-  const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
-  const [paymentProofPreview, setPaymentProofPreview] = useState<string | null>(null);
+  const [paymentProofUrl, setPaymentProofUrl] = useState<string | null>(null);
   const [createdTournamentId, setCreatedTournamentId] = useState<number | null>(null);
+
+  // Rules file states
+  const [rulesFile, setRulesFile] = useState<File | null>(null);
+  const rulesFileInputRef = useRef<HTMLInputElement>(null);
 
   // Date states
   const [regStartDate, setRegStartDate] = useState<Date>();
@@ -135,6 +139,15 @@ export default function CreateTournament() {
     calculateTotalPrice();
   }, [selectedBookings, sessionPrices]);
 
+  // Helper function to format VND currency
+  const formatVND = (amount: number): string => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'decimal',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount) + ' ₫';
+  };
+
   const loadSessionPrices = async (clusterId: number) => {
     try {
       const prices = await tournamentSessionPriceService.getByClusterId(clusterId);
@@ -147,12 +160,55 @@ export default function CreateTournament() {
 
   const loadOwnerQRCode = async (clusterId: number) => {
     try {
-      const response = await getQRCode();
-      if (response.data?.qr_code_url) {
-        setOwnerQRCode(response.data.qr_code_url);
+      // Load field cluster detail để lấy owner info
+      const cluster = await fieldComplexService.getById(clusterId);
+      console.log('🔍 Field Cluster Data:', cluster);
+      console.log('🔍 Owner Data:', cluster?.owner);
+      console.log('🔍 Owner ID:', cluster?.owner_id);
+      
+      // Check nếu cluster có owner relationship
+      if (cluster?.owner) {
+        // Trường hợp 1: Backend đã include owner (RECOMMENDED)
+        const qrCode = cluster.owner.qr_code_image 
+                    || cluster.owner.qr_code_url 
+                    || cluster.owner.qr_image;
+        
+        if (qrCode) {
+          console.log('✅ QR Code found from owner relationship:', qrCode);
+          setOwnerQRCode(qrCode);
+        } else {
+          console.log('❌ Owner chưa upload QR code');
+          setOwnerQRCode(null);
+        }
+      } else if (cluster?.owner_id) {
+        // Trường hợp 2: Backend chưa include owner, workaround bằng gọi API riêng
+        console.log('⚠️ Backend không trả owner relationship, đang gọi API riêng...');
+        try {
+          const ownerResponse = await getOwner(cluster.owner_id);
+          console.log('🔍 Owner fetched separately:', ownerResponse);
+          const owner = ownerResponse?.data || ownerResponse;
+          
+          const qrCode = owner?.qr_code_image 
+                      || owner?.qr_code_url 
+                      || owner?.qr_image;
+          
+          if (qrCode) {
+            console.log('✅ QR Code found from separate API:', qrCode);
+            setOwnerQRCode(qrCode);
+          } else {
+            console.log('❌ Owner chưa upload QR code');
+            setOwnerQRCode(null);
+          }
+        } catch (ownerError) {
+          console.error('Error fetching owner separately:', ownerError);
+          setOwnerQRCode(null);
+        }
+      } else {
+        console.log('❌ Không có owner_id trong cluster data');
+        setOwnerQRCode(null);
       }
     } catch (error) {
-      console.log('No QR code available');
+      console.error('Error loading owner QR code:', error);
       setOwnerQRCode(null);
     }
   };
@@ -529,7 +585,7 @@ export default function CreateTournament() {
       
       case 5:
         // Validate payment method
-        if (paymentMethod === 'transfer' && !paymentProofFile) {
+        if (paymentMethod === 'transfer' && !paymentProofUrl) {
           toast({
             title: 'Thiếu thông tin',
             description: 'Vui lòng upload bill chuyển khoản',
@@ -559,7 +615,7 @@ export default function CreateTournament() {
     if (!validateStep(1) || !validateStep(2) || !validateStep(3) || !validateStep(4)) return;
 
     // Validate payment
-    if (paymentMethod === 'transfer' && !paymentProofFile) {
+    if (paymentMethod === 'transfer' && !paymentProofUrl) {
       toast({
         title: 'Lỗi',
         description: 'Vui lòng upload bill chuyển khoản',
@@ -580,45 +636,56 @@ export default function CreateTournament() {
       ...formData,
       bookings: bookingsData,
       payment_method: paymentMethod,
+      payment_proof_url: paymentMethod === 'transfer' ? paymentProofUrl : undefined,
     };
 
     console.log('📤 Payload gửi lên backend:', JSON.stringify(payload, null, 2));
 
     setIsSubmitting(true);
     try {
-      const response = await tournamentService.create(payload);
-      console.log('✅ Tournament created successfully:', response);
-      console.log('Tournament ID:', response.id);
-      const tournamentId = response.id;
+      const createdTournament = await tournamentService.create(payload);
+      console.log('✅ Tournament created successfully:', createdTournament);
+      const tournamentId = createdTournament?.id;
+      console.log('Tournament ID:', tournamentId);
       
       if (!tournamentId) {
-        throw new Error('Tournament ID not found in response');
+        console.error('❌ Response không có tournament ID:', createdTournament);
+        toast({
+          title: 'Cảnh báo',
+          description: 'Giải đấu có thể đã được tạo nhưng không nhận được ID từ server. Vui lòng kiểm tra trang "Giải đấu của tôi".',
+          variant: 'destructive',
+        });
+        navigate('/my-tournaments');
+        return;
       }
       
-      // If transfer method and has bill, upload it
-      if (paymentMethod === 'transfer' && paymentProofFile && tournamentId) {
+      // Success message based on payment method
+      if (paymentMethod === 'transfer') {
+        toast({
+          title: '🎉 Tạo giải đấu thành công!',
+          description: `Giải đấu "${payload.name}" đã được tạo và bill chuyển khoản đã được gửi. Đang chờ chủ sân xác nhận thanh toán. Bạn sẽ nhận được thông báo khi thanh toán được xác nhận.`,
+        });
+      } else {
+        // Thanh toán tiền mặt
+        toast({
+          title: '🎉 Tạo giải đấu thành công!',
+          description: `Giải đấu "${payload.name}" đã được tạo. Vui lòng liên hệ chủ sân để thanh toán tiền mặt. Sau khi chủ sân xác nhận thanh toán, bạn có thể mở đăng ký giải.`,
+        });
+      }
+
+      // Upload rules file if provided
+      if (rulesFile && tournamentId) {
         try {
-          const formData = new FormData();
-          formData.append('payment_proof', paymentProofFile);
-          await tournamentService.uploadPaymentProof(tournamentId, formData);
-          
-          toast({
-            title: 'Thành công',
-            description: `Tạo giải đấu "${payload.name}" thành công. Đang chờ chủ sân xác nhận thanh toán.`,
-          });
+          await tournamentService.uploadRulesFile(tournamentId, rulesFile);
+          console.log('✅ Rules file uploaded successfully');
         } catch (uploadError) {
-          console.error('Error uploading payment proof:', uploadError);
+          console.error('Error uploading rules file:', uploadError);
           toast({
             title: 'Cảnh báo',
-            description: 'Tạo giải đấu thành công nhưng không thể upload bill. Vui lòng upload lại sau.',
-            variant: 'destructive',
+            description: 'Không thể upload file thể lệ. Bạn có thể upload lại trong trang chi tiết giải.',
+            variant: 'default',
           });
         }
-      } else {
-        toast({
-          title: 'Thành công',
-          description: `Tạo giải đấu "${payload.name}" thành công với ${bookingsData.length} đặt sân`,
-        });
       }
       
       // Navigate đến tournament detail thay vì my-tournaments
@@ -647,6 +714,55 @@ export default function CreateTournament() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Rules file handlers
+  const handleRulesFileSelect = () => {
+    rulesFileInputRef.current?.click();
+  };
+
+  const handleRulesFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedExtensions = ['.pdf', '.doc', '.docx'];
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+
+    if (!allowedExtensions.includes(fileExtension)) {
+      toast({
+        title: 'Lỗi',
+        description: 'Chỉ hỗ trợ file PDF, DOC, DOCX',
+        variant: 'destructive',
+      });
+      e.target.value = '';
+      return;
+    }
+
+    // Validate file size (10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast({
+        title: 'Lỗi',
+        description: 'File không được vượt quá 10MB',
+        variant: 'destructive',
+      });
+      e.target.value = '';
+      return;
+    }
+
+    setRulesFile(file);
+    toast({
+      title: 'File đã chọn',
+      description: `${file.name} (${(file.size / 1024).toFixed(2)} KB)`,
+    });
+  };
+
+  const handleRemoveRulesFile = () => {
+    setRulesFile(null);
+    if (rulesFileInputRef.current) {
+      rulesFileInputRef.current.value = '';
     }
   };
 
@@ -726,6 +842,74 @@ export default function CreateTournament() {
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             rows={3}
           />
+        </div>
+
+        {/* Rules File Upload */}
+        <div className="space-y-2 border-2 border-dashed border-blue-300 bg-blue-50 p-4 rounded-lg">
+          <Label className="text-base font-semibold text-blue-900 flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            File thể lệ giải đấu (tùy chọn)
+          </Label>
+          <div className="space-y-3">
+            <input
+              ref={rulesFileInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx"
+              onChange={handleRulesFileChange}
+              className="hidden"
+            />
+            
+            {!rulesFile ? (
+              <div className="border-2 border-dashed border-blue-300 bg-white rounded-lg p-6 text-center space-y-3">
+                <FileText className="mx-auto h-10 w-10 text-blue-400" />
+                <div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleRulesFileSelect}
+                    className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-100"
+                  >
+                    <UploadIcon className="h-4 w-4" />
+                    Chọn file thể lệ
+                  </Button>
+                </div>
+                <p className="text-xs text-blue-600">
+                  Hỗ trợ PDF, DOC, DOCX • Tối đa 10MB
+                </p>
+                <Alert className="bg-blue-100 border-blue-300 text-left">
+                  <Info className="h-4 w-4 text-blue-700" />
+                  <AlertDescription className="text-xs text-blue-800">
+                    File thể lệ sẽ được tự động upload sau khi tạo giải thành công
+                  </AlertDescription>
+                </Alert>
+              </div>
+            ) : (
+              <div className="border border-blue-300 rounded-lg p-4 bg-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 rounded">
+                      <FileText className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate text-blue-900">{rulesFile.name}</p>
+                      <p className="text-xs text-blue-600">
+                        {(rulesFile.size / 1024).toFixed(2)} KB
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRemoveRulesFile}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -1117,7 +1301,7 @@ export default function CreateTournament() {
                     </div>
                     {price && (
                       <span className="font-semibold text-green-600 ml-4">
-                        {price.price_per_session.toLocaleString('vi-VN')} ₫
+                        {formatVND(price.price_per_session)}
                       </span>
                     )}
                   </div>
@@ -1128,7 +1312,7 @@ export default function CreateTournament() {
               <div className="border-t pt-3 mt-3 flex justify-between items-center font-bold text-lg">
                 <span>Tổng cộng:</span>
                 <span className="text-primary">
-                  {totalPrice.toLocaleString('vi-VN')} ₫
+                  {formatVND(totalPrice)}
                 </span>
               </div>
             </div>
@@ -1139,29 +1323,6 @@ export default function CreateTournament() {
   );
 
   const renderStep5 = () => {
-    const handlePaymentProofChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        toast({
-          title: 'Lỗi',
-          description: 'Vui lòng chọn file ảnh',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setPaymentProofFile(file);
-
-      // Preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPaymentProofPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    };
 
     return (
       <Card>
@@ -1181,7 +1342,7 @@ export default function CreateTournament() {
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Tổng chi phí đặt sân</p>
                 <p className="text-3xl font-bold text-primary">
-                  {totalPrice.toLocaleString('vi-VN')} ₫
+                  {formatVND(totalPrice)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   {selectedBookings.length} lượt đặt sân
@@ -1267,10 +1428,20 @@ export default function CreateTournament() {
           {/* Transfer Payment Details */}
           {paymentMethod === 'transfer' && (
             <div className="space-y-4 animate-fade-in">
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  Vui lòng chuyển khoản theo thông tin dưới đây và upload bill để chủ sân xác nhận
+              <Alert className="bg-blue-50 border-blue-300">
+                <Info className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-blue-900">
+                  <div className="space-y-2">
+                    <p className="font-semibold">📋 Hướng dẫn thanh toán chuyển khoản:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-sm ml-2">
+                      <li>Quét mã QR hoặc chuyển khoản với số tiền <span className="font-bold text-blue-700">{formatVND(totalPrice)}</span></li>
+                      <li>Chụp lại bill/screenshot giao dịch thành công</li>
+                      <li>Upload bill vào ô bên dưới</li>
+                      <li>Chờ chủ sân xác nhận thanh toán (thường trong vài phút)</li>
+                      <li>Sau khi xác nhận, bạn có thể mở đăng ký giải</li>
+                    </ol>
+                    <p className="text-xs text-blue-700 mt-2"><strong>Lưu ý:</strong> Giải đấu sẽ ở trạng thái bản nháp cho đến khi thanh toán được xác nhận.</p>
+                  </div>
                 </AlertDescription>
               </Alert>
 
@@ -1284,7 +1455,7 @@ export default function CreateTournament() {
                     className="w-64 h-64 object-contain border rounded-lg"
                   />
                   <p className="text-sm text-muted-foreground text-center">
-                    Số tiền: <span className="font-bold text-primary">{totalPrice.toLocaleString('vi-VN')} ₫</span>
+                    Số tiền: <span className="font-bold text-primary">{formatVND(totalPrice)}</span>
                   </p>
                 </div>
               ) : (
@@ -1297,43 +1468,16 @@ export default function CreateTournament() {
 
               {/* Upload Payment Proof */}
               <div className="space-y-2">
-                <Label htmlFor="payment_proof">Upload bill chuyển khoản *</Label>
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-4">
-                    <Label
-                      htmlFor="payment_proof"
-                      className="cursor-pointer flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-                    >
-                      <UploadIcon className="w-4 h-4" />
-                      {paymentProofFile ? 'Thay đổi ảnh' : 'Chọn ảnh bill'}
-                    </Label>
-                    <Input
-                      id="payment_proof"
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePaymentProofChange}
-                      className="hidden"
-                    />
-                    {paymentProofFile && (
-                      <span className="text-sm text-muted-foreground">
-                        {paymentProofFile.name}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Preview */}
-                  {paymentProofPreview && (
-                    <div className="border-2 border-dashed rounded-lg p-4">
-                      <img
-                        src={paymentProofPreview}
-                        alt="Preview bill"
-                        className="max-w-md max-h-64 object-contain mx-auto"
-                      />
-                    </div>
-                  )}
-                </div>
+                <Label>Upload bill chuyển khoản *</Label>
+                <ImageUpload
+                  value={paymentProofUrl || undefined}
+                  onChange={(url) => setPaymentProofUrl(url)}
+                  bucket="image"
+                  folder="payment-proofs"
+                  maxSize={5}
+                />
                 <p className="text-xs text-muted-foreground">
-                  Upload ảnh bill/screenshot giao dịch chuyển khoản thành công
+                  Upload ảnh bill/screenshot giao dịch chuyển khoản thành công (PNG, JPG - tối đa 5MB)
                 </p>
               </div>
             </div>
@@ -1341,12 +1485,30 @@ export default function CreateTournament() {
 
           {/* Cash Payment Info */}
           {paymentMethod === 'cash' && (
-            <Alert className="animate-fade-in">
-              <Info className="h-4 w-4" />
-              <AlertDescription>
-                Bạn sẽ thanh toán trực tiếp bằng tiền mặt khi đến sân. Vui lòng mang theo đầy đủ số tiền <span className="font-bold">{totalPrice.toLocaleString('vi-VN')} ₫</span>.
-              </AlertDescription>
-            </Alert>
+            <div className="space-y-3 animate-fade-in">
+              <Alert className="bg-amber-50 border-amber-300">
+                <Info className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-900">
+                  <div className="space-y-2">
+                    <p className="font-semibold">📋 Hướng dẫn thanh toán tiền mặt:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-sm ml-2">
+                      <li>Liên hệ chủ sân để hẹn lịch thanh toán</li>
+                      <li>Mang theo <span className="font-bold text-amber-700">{formatVND(totalPrice)}</span> tiền mặt</li>
+                      <li>Thanh toán trực tiếp tại sân</li>
+                      <li>Chủ sân sẽ xác nhận thanh toán trên hệ thống</li>
+                      <li>Sau khi xác nhận, bạn có thể mở đăng ký giải</li>
+                    </ol>
+                  </div>
+                </AlertDescription>
+              </Alert>
+              
+              <Alert className="bg-blue-50 border-blue-300">
+                <Info className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-blue-900 text-sm">
+                  <strong>Lưu ý:</strong> Giải đấu sẽ ở trạng thái <span className="font-semibold">Bản nháp</span> và <span className="font-semibold">chưa thể mở đăng ký</span> cho đến khi chủ sân xác nhận đã nhận thanh toán.
+                </AlertDescription>
+              </Alert>
+            </div>
           )}
         </CardContent>
       </Card>

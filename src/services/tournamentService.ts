@@ -59,6 +59,15 @@ export interface Tournament {
   payment_proof_url?: string;
   total_price?: number;
   
+  // Rules file fields
+  tournament_rules_file?: string;
+  rules_file_info?: {
+    file_url?: string;
+    file_name?: string;
+    download_url?: string;
+    has_file: boolean;
+  };
+  
   organizer?: {
     id: number;
     name: string;
@@ -142,6 +151,8 @@ export interface TournamentRequest {
   end_date: string;
   field_cluster_id: number;
   field_type?: string; // Loại sân (5v5, 7v7, 11v11) - optional để backward compatible
+  payment_method?: 'cash' | 'transfer'; // Phương thức thanh toán
+  payment_proof_url?: string; // URL bill chuyển khoản từ Supabase
   bookings?: Array<{ // Danh sách sân cần book
     field_id: number;
     date: string; // YYYY-MM-DD
@@ -192,25 +203,23 @@ export const tournamentService = {
 
   // Chi tiết giải đấu (có quan hệ đầy đủ)
   getById: async (id: number): Promise<Tournament> => {
+    const parseResponse = (raw: any): Tournament | null => {
+      if (raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) && raw.data?.id) return raw.data;
+      if (raw?.tournament?.id) return raw.tournament;
+      if (raw?.id) return raw;
+      return null;
+    };
+
     try {
-      // Luôn dùng API public để dữ liệu nhất quán cho cả đăng nhập và chưa đăng nhập
-      const response = await api.get(`/public/tournaments/${id}`);
-      const raw = response.data;
-      
-      // { success, data: { id, name, registrations, ... } }
-      if (raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) && raw.data?.id) {
-        return raw.data;
-      }
-      // { tournament: { ... } }
-      if (raw?.tournament?.id) {
-        return raw.tournament;
-      }
-      // Direct object
-      if (raw?.id) {
-        return raw;
-      }
-      
-      console.error('❌ Could not parse tournament data:', raw);
+      // Có token → dùng authenticated endpoint (GET /api/tournaments/{id}) để xem được cả draft
+      const hasToken = !!localStorage.getItem('access_token');
+      const endpoint = hasToken ? `/tournaments/${id}` : `/public/tournaments/${id}`;
+
+      const response = await api.get(endpoint);
+      const result = parseResponse(response.data);
+      if (result) return result;
+
+      console.error('❌ Could not parse tournament data:', response.data);
       throw new Error('Không tìm thấy dữ liệu giải đấu hợp lệ từ API');
     } catch (error) {
       console.error(`Error fetching tournament ${id}:`, error);
@@ -221,8 +230,20 @@ export const tournamentService = {
   // Tạo giải đấu mới (Admin/BTC)
   create: async (data: TournamentRequest): Promise<Tournament> => {
     try {
-      const response = await api.post<ApiResponse<Tournament>>('/tournaments', data);
-      return response.data.data;
+      const response = await api.post('/tournaments', data);
+      const raw = response.data;
+
+      // { success: true, data: { id, name, ... } }
+      if (raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) && raw.data?.id) return raw.data;
+      // { tournament: { id, ... } }
+      if (raw?.tournament?.id) return raw.tournament;
+      // { data: { tournament: { ... } } }
+      if (raw?.data?.tournament?.id) return raw.data.tournament;
+      // Direct object { id, name, ... }
+      if (raw?.id) return raw;
+
+      console.error('❌ Could not parse create tournament response:', raw);
+      throw new Error('Không thể đọc dữ liệu giải đấu từ response');
     } catch (error) {
       console.error('Error creating tournament:', error);
       throw error;
@@ -435,12 +456,60 @@ export const tournamentService = {
   },
 
   // Owner xác nhận thanh toán (approve/reject)
-  confirmPayment: async (id: number, action: 'approve' | 'reject'): Promise<any> => {
+  confirmPayment: async (id: number, action: 'approve' | 'reject', note?: string): Promise<any> => {
     try {
-      const response = await api.put(`/tournaments/${id}/confirm-payment`, { action });
+      const response = await api.put(`/tournaments/${id}/confirm-payment`, { 
+        action,
+        note: note || (action === 'approve' ? 'Đã xác nhận thanh toán' : 'Từ chối thanh toán')
+      });
       return response.data;
     } catch (error) {
       console.error(`Error confirming payment for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // ==========================================
+  // RULES FILE MANAGEMENT
+  // ==========================================
+
+  // Upload file thể lệ giải đấu (PDF/DOC/DOCX)
+  uploadRulesFile: async (id: number, file: File): Promise<any> => {
+    try {
+      const formData = new FormData();
+      formData.append('rules_file', file);
+
+      const response = await api.post(`/tournaments/${id}/upload-rules-file`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error uploading rules file for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Download file thể lệ (public - không cần auth)
+  downloadRulesFile: async (id: number): Promise<Blob> => {
+    try {
+      const response = await api.get(`/tournaments/${id}/download-rules-file`, {
+        responseType: 'blob',
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error downloading rules file for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Xóa file thể lệ
+  deleteRulesFile: async (id: number): Promise<void> => {
+    try {
+      await api.delete(`/tournaments/${id}/delete-rules-file`);
+    } catch (error) {
+      console.error(`Error deleting rules file for tournament ${id}:`, error);
       throw error;
     }
   },

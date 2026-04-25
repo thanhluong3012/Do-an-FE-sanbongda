@@ -7,15 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, User, Mail, Phone, Lock, Upload, Image as ImageIcon } from 'lucide-react';
+import { ImageUpload } from '@/components/ui/image-upload';
 import { getCurrentUser, updateProfile, type UpdateProfileData } from '@/services/userService';
-import { updateOwnerProfile, uploadQRCode, getQRCode, type UpdateOwnerProfileData } from '@/services/ownerService';
+import { updateOwnerProfile, getQRCode, type UpdateOwnerProfileData } from '@/services/ownerService';
 
 export default function Profile() {
   const { user: authUser, isOwner } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploadingQR, setUploadingQR] = useState(false);
 
   // User info
   const [userForm, setUserForm] = useState({
@@ -34,7 +34,6 @@ export default function Profile() {
   });
 
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-  const [qrPreview, setQrPreview] = useState<string | null>(null);
 
   useEffect(() => {
     loadUserProfile();
@@ -160,47 +159,28 @@ export default function Profile() {
     }
   };
 
-  const handleQRUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast({
-        title: 'Lỗi',
-        description: 'Vui lòng chọn file ảnh',
-        variant: 'destructive',
-      });
+  const handleQRUpload = async (url: string | null) => {
+    if (!url) {
+      setQrCodeUrl(null);
       return;
     }
 
     try {
-      setUploadingQR(true);
-
-      // Preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setQrPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-
-      // Upload
-      const response = await uploadQRCode(file);
-      setQrCodeUrl(response.data.qr_code_url);
+      // Lưu URL vào database qua API backend
+      await updateOwnerProfile({ qr_code_image: url });
+      setQrCodeUrl(url);
 
       toast({
         title: 'Thành công',
-        description: 'Đã upload QR code',
+        description: 'Đã cập nhật QR code thanh toán',
       });
     } catch (error: any) {
-      console.error('Error uploading QR:', error);
+      console.error('Error saving QR URL:', error);
       toast({
         title: 'Lỗi',
-        description: error?.response?.data?.message || 'Không thể upload QR code',
+        description: error?.response?.data?.message || 'Không thể lưu QR code',
         variant: 'destructive',
       });
-    } finally {
-      setUploadingQR(false);
     }
   };
 
@@ -366,49 +346,16 @@ export default function Profile() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {(qrCodeUrl || qrPreview) && (
-                      <div className="flex justify-center">
-                        <div className="border-2 border-dashed rounded-lg p-4">
-                          <img
-                            src={qrPreview || qrCodeUrl || ''}
-                            alt="QR Code"
-                            className="w-64 h-64 object-contain"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-4">
-                      <Label
-                        htmlFor="qr_upload"
-                        className="cursor-pointer flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-                      >
-                        {uploadingQR ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Đang upload...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4" />
-                            {qrCodeUrl ? 'Thay đổi QR Code' : 'Upload QR Code'}
-                          </>
-                        )}
-                      </Label>
-                      <Input
-                        id="qr_upload"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleQRUpload}
-                        className="hidden"
-                        disabled={uploadingQR}
-                      />
-                      <p className="text-sm text-gray-500">
-                        Chọn ảnh QR code (PNG, JPG)
-                      </p>
-                    </div>
-                  </div>
+                  <ImageUpload
+                    value={qrCodeUrl || undefined}
+                    onChange={handleQRUpload}
+                    bucket="image"
+                    folder="owner-qr-codes"
+                    maxSize={5}
+                  />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Tải lên mã QR thanh toán (PNG, JPG - tối đa 5MB)
+                  </p>
                 </CardContent>
               </Card>
             </>

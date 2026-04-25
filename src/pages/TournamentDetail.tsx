@@ -19,6 +19,8 @@ import { MatchCard } from '@/components/Match/MatchCard';
 import { UpdateScoreDialog } from '@/components/Match/UpdateScoreDialog';
 import { GroupStandingsTable } from '@/components/Standings/GroupStandingsTable';
 import { ScheduleBuilder } from '@/components/Match/ScheduleBuilder';
+import { PaymentInfoCard } from '@/components/Tournament/PaymentInfoCard';
+import { RulesFileSection } from '@/components/Tournament/RulesFileSection';
 import {
   Trophy, MapPin, Users, Calendar, ArrowLeft, CheckCircle,
   Loader2, User, Megaphone, AlertCircle, ClipboardList,
@@ -318,8 +320,9 @@ const TournamentDetail = () => {
   const handleApproveRegistration = async (registrationId: number) => {
     try {
       await registrationService.approve(registrationId);
-      toast({ title: 'Thành công', description: 'Đã duyệt đăng ký' });
+      toast({ title: 'Thành công', description: 'Đã duyệt đăng ký. Đội sẽ nhận được thông báo.' });
       await loadRegistrations();
+      await loadTournament();
     } catch (err: any) {
       toast({ title: 'Lỗi', description: err.response?.data?.message || 'Không thể duyệt đăng ký', variant: 'destructive' });
     }
@@ -327,9 +330,10 @@ const TournamentDetail = () => {
 
   const handleRejectRegistration = async (registrationId: number, reason: string) => {
     try {
-      await registrationService.reject(registrationId, { reason });
-      toast({ title: 'Thành công', description: 'Đã từ chối đăng ký' });
+      await registrationService.reject(registrationId, { rejected_reason: reason });
+      toast({ title: 'Thành công', description: 'Đã từ chối đăng ký. Đội sẽ nhận được thông báo.' });
       await loadRegistrations();
+      await loadTournament();
     } catch (err: any) {
       toast({ title: 'Lỗi', description: err.response?.data?.message || 'Không thể từ chối đăng ký', variant: 'destructive' });
     }
@@ -596,6 +600,17 @@ const TournamentDetail = () => {
               Giải đấu đã đủ {approvedCount}/{tournament.max_teams} đội. Không thể đăng ký thêm.
             </div>
           )}
+
+          {/* Payment Info Card - hiển thị nếu có payment_method */}
+          {tournament.payment_method && canPublish && (
+            <div className="mt-4">
+              <PaymentInfoCard 
+                tournament={tournament}
+                onPublish={handlePublish}
+                isPublishing={isPublishing}
+              />
+            </div>
+          )}
           {!isFull && availableSlots <= 2 && availableSlots > 0 && (
             <div className="mt-4 flex items-center gap-2 px-4 py-3 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-700 text-sm font-medium">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -668,18 +683,27 @@ const TournamentDetail = () => {
                     </div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
 
-                {/* Danh sách sân đã đặt - CHỈ HIỂN THỊ CHO ORGANIZER/ADMIN */}
-                {canManage && (
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                        Sân thi đấu đã đặt
-                      </p>
-                      {bookingsLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                    </div>
-                    
-                    {bookingsError ? (
+            {/* Thể lệ giải đấu */}
+            <RulesFileSection 
+              tournament={tournament}
+              canEdit={canManage}
+              onUpdate={loadTournament}
+            />
+
+            {/* Danh sách sân đã đặt - CHỈ HIỂN THỊ CHO ORGANIZER/ADMIN */}
+            {canManage && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Sân thi đấu đã đặt</span>
+                    {bookingsLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {bookingsError ? (
                       <Card className="border-red-200 bg-red-50">
                         <CardContent className="pt-5">
                           <div className="flex items-start gap-3">
@@ -748,8 +772,9 @@ const TournamentDetail = () => {
                       )})}
                     </div>
                   )}
-                </div>                )}              </CardContent>
-            </Card>
+                </CardContent>
+                </Card>
+              )}
           </TabsContent>
 
           {/* ── Tab: Đăng ký ── */}

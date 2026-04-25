@@ -50,6 +50,7 @@ const Tournament = () => {
         description: 'Giải đấu đã được tạo thành công! Status hiện tại là "draft".',
       });
       navigate(`/tournament/${tournament.id}`);
+      return tournament; // Return tournament for file upload
     } catch (error: any) {
       toast({
         title: 'Lỗi',

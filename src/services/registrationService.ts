@@ -36,7 +36,7 @@ export interface RegistrationRequest {
 
 // Interface cho Rejection Request
 export interface RejectionRequest {
-  reason: string;
+  rejected_reason: string;
 }
 
 // Interface cho API Response

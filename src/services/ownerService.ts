@@ -60,6 +60,7 @@ export interface UpdateOwnerProfileData {
   business_name?: string;
   address?: string;
   code_id?: string;
+  qr_code_image?: string; // QR code URL from Supabase Storage
 }
 
 // Owner tự cập nhật profile của mình

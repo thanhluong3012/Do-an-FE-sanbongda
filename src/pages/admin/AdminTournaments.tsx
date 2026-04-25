@@ -73,8 +73,9 @@ const AdminTournaments = () => {
   };
 
   const handleCreate = async (data: any) => {
-    await tournamentService.create(data);
+    const tournament = await tournamentService.create(data);
     await loadTournaments();
+    return tournament; // Return for file upload in dialog
   };
 
   const handleUpdate = async (data: any) => {
@@ -83,6 +84,7 @@ const AdminTournaments = () => {
       await loadTournaments();
       setEditingTournament(null);
     }
+    // No return needed for update
   };
 
   const handleDelete = async () => {

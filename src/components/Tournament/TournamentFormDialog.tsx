@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,10 +7,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Tournament, TournamentRequest } from '@/services/tournamentService';
+import { Tournament, TournamentRequest, tournamentService } from '@/services/tournamentService';
 import { fieldComplexService } from '@/services/fieldComplexService';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CalendarIcon, Info, CheckCircle2, Circle } from 'lucide-react';
+import { Loader2, CalendarIcon, Info, CheckCircle2, Circle, FileText, Upload, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/badge';
 interface TournamentFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: TournamentRequest) => Promise<void>;
+  onSubmit: (data: TournamentRequest) => Promise<Tournament | void>;
   tournament?: Tournament | null;
   fieldClusters?: Array<{ id: number; name: string }>;
 }
@@ -63,6 +63,7 @@ export const TournamentFormDialog = ({
     end_date: '',
     field_cluster_id: 0,
     field_type: '5v5',
+    payment_method: 'cash',
     bookings: [],
   });
 
@@ -77,6 +78,10 @@ export const TournamentFormDialog = ({
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
   const [fieldAvailability, setFieldAvailability] = useState<FieldAvailability[]>([]);
   const [selectedBookings, setSelectedBookings] = useState<SelectedBooking[]>([]);
+
+  // Rules file state
+  const [selectedRulesFile, setSelectedRulesFile] = useState<File | null>(null);
+  const rulesFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (tournament) {
@@ -112,6 +117,7 @@ export const TournamentFormDialog = ({
         end_date: '',
         field_cluster_id: 0,
         field_type: '5v5',
+        payment_method: 'cash',
         bookings: [],
       });
       setRegStartDate(undefined);
@@ -295,20 +301,39 @@ export const TournamentFormDialog = ({
     // Build bookings array
     const bookingsData = selectedBookings.map(b => ({
       field_id: b.field_id,
-      booking_date: format(bookingDate, 'yyyy-MM-dd'),
-      time_slot: b.time_slot,
+      date: format(bookingDate, 'yyyy-MM-dd'),
+      session_type: b.time_slot as 'morning' | 'afternoon' | 'evening',
     }));
 
     setIsSubmitting(true);
     try {
-      await onSubmit({
+      const result = await onSubmit({
         ...formData,
         bookings: bookingsData,
       });
-      toast({
-        title: 'Thành công',
-        description: tournament ? 'Cập nhật giải đấu thành công' : `Tạo giải đấu thành công với ${bookingsData.length} đặt sân`,
-      });
+
+      // Upload rules file if provided and tournament was created (not updated)
+      if (selectedRulesFile && result && result.id) {
+        try {
+          await tournamentService.uploadRulesFile(result.id, selectedRulesFile);
+          toast({
+            title: 'Thành công',
+            description: `Tạo giải đấu và upload file thể lệ thành công với ${bookingsData.length} đặt sân`,
+          });
+        } catch (uploadError: any) {
+          toast({
+            title: 'Cảnh báo',
+            description: 'Giải đấu đã tạo nhưng không thể upload file thể lệ. Bạn có thể upload lại trong trang chi tiết giải.',
+            variant: 'default',
+          });
+        }
+      } else {
+        toast({
+          title: 'Thành công',
+          description: tournament ? 'Cập nhật giải đấu thành công' : `Tạo giải đấu thành công với ${bookingsData.length} đặt sân`,
+        });
+      }
+
       onOpenChange(false);
     } catch (error: any) {
       toast({
@@ -344,6 +369,55 @@ export const TournamentFormDialog = ({
         return '🌙 Tối (18h-22h)';
       default:
         return slot;
+    }
+  };
+
+  // Rules file handlers
+  const handleRulesFileSelect = () => {
+    rulesFileInputRef.current?.click();
+  };
+
+  const handleRulesFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedExtensions = ['.pdf', '.doc', '.docx'];
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+
+    if (!allowedExtensions.includes(fileExtension)) {
+      toast({
+        title: 'Lỗi',
+        description: 'Chỉ hỗ trợ file PDF, DOC, DOCX',
+        variant: 'destructive',
+      });
+      e.target.value = '';
+      return;
+    }
+
+    // Validate file size (10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast({
+        title: 'Lỗi',
+        description: 'File không được vượt quá 10MB',
+        variant: 'destructive',
+      });
+      e.target.value = '';
+      return;
+    }
+
+    setSelectedRulesFile(file);
+    toast({
+      title: 'File đã chọn',
+      description: `${file.name} (${(file.size / 1024).toFixed(2)} KB)`,
+    });
+  };
+
+  const handleRemoveRulesFile = () => {
+    setSelectedRulesFile(null);
+    if (rulesFileInputRef.current) {
+      rulesFileInputRef.current.value = '';
     }
   };
 
@@ -405,6 +479,71 @@ export const TournamentFormDialog = ({
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={2}
                 />
+              </div>
+
+              {/* Rules File Upload */}
+              <div className="space-y-2 border-2 border-amber-300 bg-amber-50 p-4 rounded-lg">
+                <Label className="text-lg font-bold text-amber-900">📄 File thể lệ giải đấu (tùy chọn)</Label>
+                <div className="space-y-3">
+                  <input
+                    ref={rulesFileInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={handleRulesFileChange}
+                    className="hidden"
+                  />
+                  
+                  {!selectedRulesFile ? (
+                    <div className="border-2 border-dashed rounded-lg p-6 text-center space-y-3">
+                      <FileText className="mx-auto h-10 w-10 text-muted-foreground" />
+                      <div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleRulesFileSelect}
+                          className="gap-2"
+                        >
+                          <Upload className="h-4 w-4" />
+                          Chọn file thể lệ
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Hỗ trợ PDF, DOC, DOCX • Tối đa 10MB
+                      </p>
+                      <Alert className="bg-blue-50 border-blue-200 text-left">
+                        <Info className="h-4 w-4 text-blue-600" />
+                        <AlertDescription className="text-xs text-blue-700">
+                          File sẽ được tự động upload sau khi tạo giải thành công
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+                  ) : (
+                    <div className="border rounded-lg p-4 bg-muted/30">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-100 rounded">
+                            <FileText className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{selectedRulesFile.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {(selectedRulesFile.size / 1024).toFixed(2)} KB
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleRemoveRulesFile}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -548,6 +687,43 @@ export const TournamentFormDialog = ({
             <div className="space-y-4">
               <h3 className="text-sm font-semibold border-b pb-2">⚽ Đặt sân cho giải đấu</h3>
               
+              {/* Phương thức thanh toán */}
+              <div className="space-y-2">
+                <Label htmlFor="payment_method">
+                  Phương thức thanh toán <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={formData.payment_method}
+                  onValueChange={(value: 'cash' | 'transfer') => 
+                    setFormData({ ...formData, payment_method: value })
+                  }
+                >
+                  <SelectTrigger id="payment_method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">💵 Tiền mặt tại sân</SelectItem>
+                    <SelectItem value="transfer">🏦 Chuyển khoản</SelectItem>
+                  </SelectContent>
+                </Select>
+                {formData.payment_method === 'cash' && (
+                  <Alert className="mt-2 bg-blue-50 border-blue-200">
+                    <Info className="h-4 w-4 text-blue-600" />
+                    <AlertDescription className="text-xs text-blue-700">
+                      Bạn sẽ nhận thông tin liên hệ chủ sân để hẹn lịch và thanh toán trực tiếp tại cụm sân.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {formData.payment_method === 'transfer' && (
+                  <Alert className="mt-2 bg-amber-50 border-amber-200">
+                    <Info className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-xs text-amber-700">
+                      Sau khi tạo giải, bạn cần chuyển khoản và upload bill để chủ sân xác nhận.
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="field_cluster_id">

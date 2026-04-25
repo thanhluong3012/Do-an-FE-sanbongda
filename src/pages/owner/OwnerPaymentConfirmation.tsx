@@ -3,6 +3,8 @@ import RoleBasedLayout from '@/components/layout/RoleBasedLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, CheckCircle, XCircle, Eye, DollarSign, Calendar, MapPin } from 'lucide-react';
@@ -19,6 +21,7 @@ export default function OwnerPaymentConfirmation() {
   const [confirmDialog, setConfirmDialog] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [action, setAction] = useState<'approve' | 'reject'>('approve');
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     loadTournaments();
@@ -30,9 +33,10 @@ export default function OwnerPaymentConfirmation() {
       // Get all tournaments for owner's field clusters
       const data = await tournamentService.getAll();
       // Filter tournaments that need payment confirmation (payment_status = pending)
+      // Bao gồm cả cash và transfer
       const pendingPayments = data.filter(t => 
         t.payment_status === 'pending' && 
-        t.payment_method === 'transfer'
+        (t.payment_method === 'transfer' || t.payment_method === 'cash')
       );
       setTournaments(pendingPayments);
     } catch (error: any) {
@@ -55,6 +59,10 @@ export default function OwnerPaymentConfirmation() {
   const handleOpenConfirm = (tournament: Tournament, actionType: 'approve' | 'reject') => {
     setSelectedTournament(tournament);
     setAction(actionType);
+    setNote(actionType === 'approve' 
+      ? `Đã nhận ${tournament.payment_method === 'cash' ? 'tiền mặt' : 'chuyển khoản'} đầy đủ`
+      : ''
+    );
     setConfirmDialog(true);
   };
 
@@ -63,7 +71,7 @@ export default function OwnerPaymentConfirmation() {
 
     try {
       setConfirming(true);
-      await tournamentService.confirmPayment(selectedTournament.id, action);
+      await tournamentService.confirmPayment(selectedTournament.id, action, note);
 
       toast({
         title: 'Thành công',
@@ -74,6 +82,7 @@ export default function OwnerPaymentConfirmation() {
 
       setConfirmDialog(false);
       setViewDialog(false);
+      setNote('');
       loadTournaments();
     } catch (error: any) {
       console.error('Error confirming payment:', error);
@@ -129,6 +138,15 @@ export default function OwnerPaymentConfirmation() {
                         <Badge variant="outline" className="ml-2">
                           Chờ xác nhận
                         </Badge>
+                        {tournament.payment_method === 'cash' ? (
+                          <Badge variant="secondary" className="bg-green-100 text-green-700">
+                            💵 Tiền mặt
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                            🏦 Chuyển khoản
+                          </Badge>
+                        )}
                       </CardTitle>
                       <CardDescription className="mt-2 space-y-1">
                         <div className="flex items-center gap-2 text-sm">
@@ -153,14 +171,22 @@ export default function OwnerPaymentConfirmation() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleViewProof(tournament)}
-                    >
-                      <Eye className="w-4 h-4 mr-2" />
-                      Xem bill
-                    </Button>
+                    {tournament.payment_method === 'transfer' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewProof(tournament)}
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Xem bill
+                      </Button>
+                    )}
+                    {tournament.payment_method === 'cash' && (
+                      <div className="text-sm text-muted-foreground italic">
+                        Thanh toán tiền mặt tại sân - Xác nhận sau khi nhận tiền
+                      </div>
+                    )}
+                    <div className="flex-1"></div>
                     <Button
                       size="sm"
                       onClick={() => handleOpenConfirm(tournament, 'approve')}
@@ -188,24 +214,45 @@ export default function OwnerPaymentConfirmation() {
         <Dialog open={viewDialog} onOpenChange={setViewDialog}>
           <DialogContent className="max-w-3xl">
             <DialogHeader>
-              <DialogTitle>Bill Chuyển Khoản</DialogTitle>
+              <DialogTitle>
+                {selectedTournament?.payment_method === 'cash' ? 'Xác nhận thanh toán tiền mặt' : 'Bill Chuyển Khoản'}
+              </DialogTitle>
               <DialogDescription>
                 Giải đấu: {selectedTournament?.name}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              {selectedTournament?.payment_proof_url ? (
-                <div className="border rounded-lg p-4">
-                  <img
-                    src={selectedTournament.payment_proof_url}
-                    alt="Payment proof"
-                    className="w-full h-auto object-contain max-h-[500px]"
-                  />
+              {selectedTournament?.payment_method === 'cash' ? (
+                <div className="text-center py-8 space-y-4">
+                  <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+                    <DollarSign className="w-10 h-10 text-green-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold">Thanh toán tiền mặt</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Khách hàng sẽ đến sân thanh toán trực tiếp.
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Vui lòng nhận tiền và xác nhận ngay sau khi giao dịch hoàn tất.
+                    </p>
+                  </div>
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  Không có bill chuyển khoản
-                </div>
+                <>
+                  {selectedTournament?.payment_proof_url ? (
+                    <div className="border rounded-lg p-4">
+                      <img
+                        src={selectedTournament.payment_proof_url}
+                        alt="Payment proof"
+                        className="w-full h-auto object-contain max-h-[500px]"
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Không có bill chuyển khoản
+                    </div>
+                  )}
+                </>
               )}
               <div className="bg-muted rounded-lg p-4 space-y-2">
                 <div className="flex justify-between">
@@ -216,7 +263,7 @@ export default function OwnerPaymentConfirmation() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Phương thức:</span>
-                  <span>Chuyển khoản</span>
+                  <span>{selectedTournament?.payment_method === 'cash' ? '💵 Tiền mặt' : '🏦 Chuyển khoản'}</span>
                 </div>
               </div>
             </div>
@@ -257,13 +304,37 @@ export default function OwnerPaymentConfirmation() {
               </DialogTitle>
               <DialogDescription>
                 {action === 'approve'
-                  ? 'Bạn xác nhận đã nhận được tiền chuyển khoản cho giải đấu này?'
+                  ? `Bạn xác nhận đã nhận được ${selectedTournament?.payment_method === 'cash' ? 'tiền mặt' : 'chuyển khoản'} cho giải đấu này?`
                   : 'Bạn muốn từ chối thanh toán cho giải đấu này?'}
               </DialogDescription>
             </DialogHeader>
-            <div className="bg-muted rounded-lg p-4 space-y-2">
-              <div><span className="font-medium">Giải đấu:</span> {selectedTournament?.name}</div>
-              <div><span className="font-medium">Tổng tiền:</span> {selectedTournament?.total_price?.toLocaleString('vi-VN')} ₫</div>
+            <div className="space-y-4">
+              <div className="bg-muted rounded-lg p-4 space-y-2">
+                <div><span className="font-medium">Giải đấu:</span> {selectedTournament?.name}</div>
+                <div><span className="font-medium">Tổng tiền:</span> {selectedTournament?.total_price?.toLocaleString('vi-VN')} ₫</div>
+                <div>
+                  <span className="font-medium">Phương thức:</span>{' '}
+                  {selectedTournament?.payment_method === 'cash' ? '💵 Tiền mặt' : '🏦 Chuyển khoản'}
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="note">Ghi chú {action === 'reject' && <span className="text-destructive">*</span>}</Label>
+                <Textarea
+                  id="note"
+                  placeholder={action === 'approve' 
+                    ? 'VD: Đã nhận tiền mặt tại sân lúc 14:00 ngày 13/04/2026'
+                    : 'VD: Khách hẹn nhưng không đến thanh toán'
+                  }
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={3}
+                  required={action === 'reject'}
+                />
+                {action === 'reject' && !note && (
+                  <p className="text-xs text-destructive">Vui lòng nhập lý do từ chối</p>
+                )}
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setConfirmDialog(false)}>
@@ -271,7 +342,7 @@ export default function OwnerPaymentConfirmation() {
               </Button>
               <Button
                 onClick={handleConfirmPayment}
-                disabled={confirming}
+                disabled={confirming || (action === 'reject' && !note)}
                 variant={action === 'approve' ? 'default' : 'destructive'}
               >
                 {confirming ? (
