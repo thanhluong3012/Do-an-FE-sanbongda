@@ -170,7 +170,7 @@ const FieldDetail = () => {
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-primary" />
                   <span className="text-2xl font-bold text-primary">
-                    {mockField.price.toLocaleString('vi-VN')} VNĐ
+                    {mockField.price.toLocaleString('vi-VN')} ₫
                   </span>
                   <span className="text-muted-foreground">/giờ</span>
                 </div>

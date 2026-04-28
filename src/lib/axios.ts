@@ -12,7 +12,7 @@ const api = axios.create({
 //  để tự động thêm token vào header 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('access_token');
+    const token = sessionStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -37,9 +37,9 @@ api.interceptors.response.use(
       const requestHadToken = !!error.config?.headers?.Authorization;
       if (requestHadToken) {
         console.warn('⚠️ 401 Unauthorized (with token) - Clearing auth data');
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('auth_timestamp');
+        sessionStorage.removeItem('access_token');
+        sessionStorage.removeItem('user');
+        sessionStorage.removeItem('auth_timestamp');
       } else {
         console.warn('⚠️ 401 Unauthorized (no token) - Skipping token clear');
       }

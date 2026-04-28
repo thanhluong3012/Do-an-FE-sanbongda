@@ -11,6 +11,8 @@ import { Loader2, CheckCircle, XCircle, Eye, DollarSign, Calendar, MapPin } from
 import { tournamentService, Tournament } from '@/services/tournamentService';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { useTournamentRealtimeSync, SyncMessage } from '@/hooks/useRealtimeSync';
+import { useCallback } from 'react';
 
 export default function OwnerPaymentConfirmation() {
   const { toast } = useToast();
@@ -27,17 +29,40 @@ export default function OwnerPaymentConfirmation() {
     loadTournaments();
   }, []);
 
+  // Real-time sync từ tab User khi upload payment
+  const handleTournamentUpdate = useCallback((message: SyncMessage) => {
+    console.log('🔔 [Owner Payment] Received update:', message);
+    
+    // Show notification
+    if (message.type === 'payment_uploaded') {
+      toast({
+        title: '💰 Payment mới',
+        description: 'Có tournament vừa upload bill thanh toán',
+        duration: 5000,
+      });
+      // Reload danh sách
+      loadTournaments();
+    } else if (message.type === 'payment_confirmed' || message.type === 'payment_rejected') {
+      // Reload khi có owner khác confirm/reject ở tab khác
+      loadTournaments();
+    }
+  }, []);
+
+  useTournamentRealtimeSync(handleTournamentUpdate);
+
   const loadTournaments = async () => {
     try {
       setLoading(true);
       // Get all tournaments for owner's field clusters
       const data = await tournamentService.getAll();
+      console.log('🏟️ [Owner] All tournaments:', data);
       // Filter tournaments that need payment confirmation (payment_status = pending)
       // Bao gồm cả cash và transfer
       const pendingPayments = data.filter(t => 
         t.payment_status === 'pending' && 
         (t.payment_method === 'transfer' || t.payment_method === 'cash')
       );
+      console.log('⏳ [Owner] Pending payment tournaments:', pendingPayments);
       setTournaments(pendingPayments);
     } catch (error: any) {
       console.error('Error loading tournaments:', error);
@@ -66,6 +91,8 @@ export default function OwnerPaymentConfirmation() {
     setConfirmDialog(true);
   };
 
+  const { broadcast } = useTournamentRealtimeSync(handleTournamentUpdate);
+
   const handleConfirmPayment = async () => {
     if (!selectedTournament) return;
 
@@ -78,6 +105,16 @@ export default function OwnerPaymentConfirmation() {
         description: action === 'approve' 
           ? 'Đã xác nhận thanh toán thành công'
           : 'Đã từ chối thanh toán',
+      });
+
+      // Broadcast tới tab User để update real-time
+      broadcast({
+        type: action === 'approve' ? 'payment_confirmed' : 'payment_rejected',
+        entityId: selectedTournament.id,
+        entityType: 'tournament',
+        relatedIds: {
+          tournamentId: selectedTournament.id,
+        },
       });
 
       setConfirmDialog(false);

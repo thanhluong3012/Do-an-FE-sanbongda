@@ -6,15 +6,20 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { 
   Calendar, Clock, MapPin, DollarSign, Phone, Mail,
-  AlertCircle, CheckCircle2, XCircle, Loader2, Building2
+  AlertCircle, CheckCircle2, XCircle, Loader2, Building2, Upload, Image as ImageIcon
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { bookingService, Booking } from '@/services/bookingService';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { useBookingRealtimeSync } from '@/hooks/useRealtimeSync';
 
 const MyBookings = () => {
   const navigate = useNavigate();
@@ -24,6 +29,24 @@ const MyBookings = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  
+  // Upload payment proof states
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [uploadingFile, setUploadingFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // Real-time sync để broadcast updates
+  const { broadcast } = useBookingRealtimeSync(() => {});
+
+  // Helper function để format tiền VNĐ
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+    }).format(amount);
+  };
 
   useEffect(() => {
     if (!user) {
@@ -132,6 +155,94 @@ const MyBookings = () => {
     }
   };
 
+  const handleOpenUploadDialog = (booking: Booking) => {
+    setSelectedBooking(booking);
+    setUploadingFile(null);
+    setPreviewUrl(booking.payment_proof_url || null);
+    setShowUploadDialog(true);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Lỗi',
+        description: 'Vui lòng chọn file ảnh (jpg, png, ...)',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'Lỗi',
+        description: 'Kích thước file không được vượt quá 5MB',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setUploadingFile(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleUploadPaymentProof = async () => {
+    if (!selectedBooking || !uploadingFile) return;
+
+    try {
+      setUploading(true);
+      const result = await bookingService.uploadPaymentProof(selectedBooking.id, uploadingFile);
+
+      if (result.success) {
+        toast({
+          title: 'Thành công',
+          description: 'Đã upload chứng từ thanh toán. Vui lòng đợi chủ sân xác nhận.',
+        });
+
+        // Broadcast tới Owner để thông báo có payment proof mới
+        broadcast({
+          type: 'payment_uploaded',
+          entityId: selectedBooking.id,
+          entityType: 'booking',
+          relatedIds: {
+            fieldId: selectedBooking.field_id,
+            bookingDate: selectedBooking.booking_date,
+          },
+          data: {
+            paymentMethod: selectedBooking.payment_method,
+          },
+        });
+
+        setShowUploadDialog(false);
+        loadMyBookings(); // Reload to get updated data
+      } else {
+        toast({
+          title: 'Lỗi',
+          description: result.error || 'Không thể upload chứng từ',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Lỗi',
+        description: 'Có lỗi xảy ra khi upload',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, { label: string; className: string; icon: any }> = {
       pending: {
@@ -187,6 +298,20 @@ const MyBookings = () => {
     const bookingDateTime = new Date(booking.booking_date + 'T' + booking.start_time);
     const isPast = bookingDateTime < new Date();
 
+    // Debug payment info
+    console.log('🔍 Booking #' + booking.id + ' payment info:', {
+      payment_method: booking.payment_method,
+      payment_status: booking.payment_status,
+      status: booking.status,
+      payment_proof_url: booking.payment_proof_url
+    });
+
+    // Check if should show upload button - RELAXED CONDITIONS FOR DEBUG
+    const shouldShowUpload = booking.payment_method === 'transfer' && 
+                            (!booking.payment_status || booking.payment_status !== 'paid');
+    
+    console.log('🔍 Booking #' + booking.id + ' shouldShowUpload:', shouldShowUpload);
+
     return (
       <Card key={booking.id} className={`hover:shadow-lg transition-shadow ${isPast ? 'opacity-75' : ''}`}>
         <CardHeader>
@@ -235,9 +360,60 @@ const MyBookings = () => {
               <span className="font-medium">Tổng tiền</span>
             </div>
             <span className="text-lg font-bold text-primary">
-              {booking.total_price.toLocaleString('vi-VN')} VNĐ
+              {formatCurrency(booking.total_price)}
             </span>
           </div>
+
+          {/* Payment Info */}
+          {booking.payment_method && (
+            <div className="space-y-2 pt-2 border-t">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Phương thức thanh toán:</span>
+                <Badge variant="outline" className="font-medium">
+                  {booking.payment_method === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
+                </Badge>
+              </div>
+              
+              {booking.payment_method === 'transfer' && (
+                <>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Trạng thái thanh toán:</span>
+                    <Badge 
+                      variant={booking.payment_status === 'paid' ? 'default' : 'secondary'}
+                      className={booking.payment_status === 'paid' ? 'bg-green-100 text-green-800' : ''}
+                    >
+                      {booking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ xác nhận'}
+                    </Badge>
+                  </div>
+                  
+                  {/* Message cho thanh toán đã upload bill hoặc đã xác nhận */}
+                  {booking.payment_proof_url && (
+                    <Alert className={booking.payment_status === 'paid' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}>
+                      <CheckCircle2 className={booking.payment_status === 'paid' ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-blue-600'} />
+                      <AlertDescription className={booking.payment_status === 'paid' ? 'text-sm text-green-800' : 'text-sm text-blue-800'}>
+                        {booking.payment_status === 'paid' 
+                          ? 'Đã được chủ sân xác nhận thanh toán.'
+                          : 'Đã upload chứng từ. Đang chờ chủ sân xác nhận.'
+                        }
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </>
+              )}
+
+              {/* Message cho thanh toán tiền mặt chưa xác nhận */}
+              {booking.payment_method === 'cash' && 
+               booking.payment_status !== 'paid' && 
+               !booking.payment_proof_url && (
+                <Alert className="bg-amber-50 border-amber-200">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-sm text-amber-800">
+                    💵 Vui lòng liên hệ chủ sân để thanh toán tiền mặt tại địa điểm. Sau khi thanh toán, chủ sân sẽ xác nhận đơn đặt của bạn.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
 
           {/* Contact Info */}
           {(booking.customer_name || booking.customer_phone) && (
@@ -273,27 +449,44 @@ const MyBookings = () => {
           )}
 
           {/* Actions */}
-          {canCancelBooking(booking) && (
-            <Button
-              variant="destructive"
-              size="sm"
-              className="w-full"
-              onClick={() => handleCancelBooking(booking.id)}
-              disabled={cancellingId === booking.id}
-            >
-              {cancellingId === booking.id ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Đang hủy...
-                </>
-              ) : (
-                <>
-                  <XCircle className="w-4 h-4 mr-2" />
-                  Hủy đặt sân
-                </>
-              )}
-            </Button>
-          )}
+          <div className="space-y-2">
+            {/* Upload Bill Button - RELAXED: only check payment_method and payment_status */}
+            {booking.payment_method === 'transfer' && 
+             (!booking.payment_status || booking.payment_status !== 'paid') && (
+              <Button
+                variant={booking.payment_proof_url ? "outline" : "default"}
+                size="sm"
+                className="w-full"
+                onClick={() => handleOpenUploadDialog(booking)}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {booking.payment_proof_url ? 'Đổi chứng từ thanh toán' : 'Upload chứng từ thanh toán'}
+              </Button>
+            )}
+
+            {/* Cancel Button */}
+            {canCancelBooking(booking) && (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full"
+                onClick={() => handleCancelBooking(booking.id)}
+                disabled={cancellingId === booking.id}
+              >
+                {cancellingId === booking.id ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Đang hủy...
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-4 h-4 mr-2" />
+                    Hủy đặt sân
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     );
@@ -473,6 +666,97 @@ const MyBookings = () => {
         </Tabs>
       </main>
       <Footer />
+
+      {/* Upload Payment Proof Dialog */}
+      <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="w-5 h-5 text-primary" />
+              Upload chứng từ thanh toán
+            </DialogTitle>
+            <DialogDescription>
+              Upload ảnh chụp bill/ảnh chuyển khoản để chủ sân xác nhận thanh toán
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {selectedBooking && (
+              <Alert>
+                <AlertDescription className="text-sm">
+                  <strong>Booking #{selectedBooking.id}</strong>
+                  <br />
+                  Số tiền: <strong className="text-primary">{formatCurrency(selectedBooking.total_price)}</strong>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="payment-proof">Chọn ảnh chứng từ</Label>
+              <Input
+                id="payment-proof"
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                disabled={uploading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Chấp nhận file: JPG, PNG, JPEG. Tối đa 5MB
+              </p>
+            </div>
+
+            {/* Preview */}
+            {previewUrl && (
+              <div className="space-y-2">
+                <Label>Xem trước:</Label>
+                <div className="border rounded-lg p-2 bg-muted/30">
+                  <img 
+                    src={previewUrl} 
+                    alt="Preview" 
+                    className="max-h-64 w-full object-contain rounded"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowUploadDialog(false)}
+                disabled={uploading}
+                className="flex-1"
+              >
+                Hủy
+              </Button>
+              <Button
+                onClick={handleUploadPaymentProof}
+                disabled={!uploadingFile || uploading}
+                className="flex-1"
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Đang upload...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <Alert className="bg-yellow-50 border-yellow-200">
+              <AlertCircle className="h-4 w-4 text-yellow-600" />
+              <AlertDescription className="text-xs text-yellow-800">
+                <strong>Lưu ý:</strong> Sau khi upload, chủ sân sẽ kiểm tra và xác nhận thanh toán. 
+                Bạn sẽ nhận được thông báo khi booking được xác nhận.
+              </AlertDescription>
+            </Alert>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

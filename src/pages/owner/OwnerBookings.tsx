@@ -16,16 +16,18 @@ import { bookingService, Booking } from '@/services/bookingService';
 import { fieldComplexService, FieldComplex } from '@/services/fieldComplexService';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { useBookingRealtimeSync, SyncMessage } from '@/hooks/useRealtimeSync';
+import { useCallback } from 'react';
 
 const OwnerBookings = () => {
   const { toast } = useToast();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [fieldClusters, setFieldClusters] = useState<FieldComplex[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedCluster, setSelectedCluster] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [actioningId, setActioningId] = useState<number | null>(null);
+  const [selectedBookingType, setSelectedBookingType] = useState<string>('all');
 
   useEffect(() => {
     const init = async () => {
@@ -38,7 +40,40 @@ const OwnerBookings = () => {
   useEffect(() => {
     // Reload when filters change
     loadBookings();
-  }, [selectedDate, selectedCluster, selectedStatus]);
+  }, [selectedDate, selectedCluster, selectedStatus, selectedBookingType]);
+
+  // Auto-reload when window gains focus (user switches back from other page)
+  useEffect(() => {
+    const handleFocus = () => {
+      console.log('🔄 Window focused - reloading bookings...');
+      loadBookings();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [selectedDate, selectedCluster, selectedStatus, selectedBookingType]);
+
+  // Real-time sync từ tab khác (User booking)
+  const handleBookingUpdate = useCallback((message: SyncMessage) => {
+    console.log('🔔 [Owner] Received booking update:', message);
+    
+    // Show notification
+    const actionText = message.type === 'booking_created' ? 'Có booking mới' : 
+                       message.type === 'booking_cancelled' ? 'Booking bị hủy' : 
+                       message.type === 'booking_confirmed' ? 'Booking được xác nhận' : 
+                       message.type === 'payment_uploaded' ? '💳 Có chứng từ thanh toán mới' : 'Booking cập nhật';
+    
+    toast({
+      title: '🔔 Real-time Update',
+      description: actionText,
+      duration: 5000,
+    });
+
+    // Reload danh sách bookings
+    loadBookings();
+  }, [selectedDate, selectedCluster, selectedStatus, selectedBookingType]);
+
+  useBookingRealtimeSync(handleBookingUpdate);
 
   const loadFieldClusters = async () => {
     try {
@@ -57,11 +92,11 @@ const OwnerBookings = () => {
   const loadBookings = async () => {
     setLoading(true);
     try {
-      // Get all bookings for this date (backend will filter by owner automatically)
-      const bookingDate = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
+      // Get all bookings (backend will filter by owner automatically)
+      const bookingDate = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined;
       
-      console.log('📅 Loading bookings for date:', bookingDate);
-      const allBookings = await bookingService.getOwnerBookings(bookingDate);
+      console.log('📅 Loading bookings for date:', bookingDate || 'ALL', 'type:', selectedBookingType);
+      const allBookings = await bookingService.getOwnerBookings(bookingDate, selectedBookingType);
       console.log('📋 Loaded bookings:', allBookings);
       
       // Filter by cluster if selected
@@ -93,46 +128,7 @@ const OwnerBookings = () => {
     }
   };
 
-  const handleConfirmBooking = async (id: number) => {
-    setActioningId(id);
-    try {
-      // TODO: Call API to confirm booking
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast({
-        title: 'Đã xác nhận',
-        description: 'Booking đã được xác nhận thành công',
-      });
-      loadBookings();
-    } catch (error) {
-      toast({
-        title: 'Lỗi',
-        description: 'Không thể xác nhận booking',
-        variant: 'destructive',
-      });
-    } finally {
-      setActioningId(null);
-    }
-  };
 
-  const handleCancelBooking = async (id: number) => {
-    setActioningId(id);
-    try {
-      await bookingService.cancelBooking(id);
-      toast({
-        title: 'Đã hủy',
-        description: 'Booking đã được hủy thành công',
-      });
-      loadBookings();
-    } catch (error) {
-      toast({
-        title: 'Lỗi',
-        description: 'Không thể hủy booking',
-        variant: 'destructive',
-      });
-    } finally {
-      setActioningId(null);
-    }
-  };
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
@@ -189,33 +185,45 @@ const OwnerBookings = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               {/* Date Filter */}
               <div>
                 <label className="text-sm font-medium mb-2 block">Ngày đặt</label>
-                <Popover>
-                  <PopoverTrigger asChild>
+                <div className="flex gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "flex-1 justify-start text-left font-normal",
+                          !selectedDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {selectedDate ? format(selectedDate, 'dd/MM/yyyy', { locale: vi }) : <span>Tất cả</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={setSelectedDate}
+                        locale={vi}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {selectedDate && (
                     <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !selectedDate && "text-muted-foreground"
-                      )}
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setSelectedDate(undefined)}
+                      title="Xóa bộ lọc ngày"
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {selectedDate ? format(selectedDate, 'dd/MM/yyyy', { locale: vi }) : <span>Chọn ngày</span>}
+                      <XCircle className="h-4 w-4" />
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={selectedDate}
-                      onSelect={setSelectedDate}
-                      locale={vi}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                  )}
+                </div>
               </div>
 
               {/* Cluster Filter */}
@@ -253,6 +261,21 @@ const OwnerBookings = () => {
                 </Select>
               </div>
 
+              {/* Booking Type Filter */}
+              <div>
+                <label className="text-sm font-medium mb-2 block">Loại booking</label>
+                <Select value={selectedBookingType} onValueChange={setSelectedBookingType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Tất cả loại" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tất cả</SelectItem>
+                    <SelectItem value="regular">Booking thường</SelectItem>
+                    <SelectItem value="tournament">Booking giải đấu</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Refresh Button */}
               <div className="flex items-end">
                 <Button onClick={loadBookings} variant="outline" className="w-full gap-2">
@@ -269,7 +292,7 @@ const OwnerBookings = () => {
           <CardHeader>
             <CardTitle>Danh Sách Booking</CardTitle>
             <CardDescription>
-              {selectedDate && `Ngày ${format(selectedDate, 'dd/MM/yyyy', { locale: vi })}`}
+              {selectedDate ? `Ngày ${format(selectedDate, 'dd/MM/yyyy', { locale: vi })}` : 'Tất cả các ngày'}
               {' - '}
               {bookings.length} booking
             </CardDescription>
@@ -288,15 +311,16 @@ const OwnerBookings = () => {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cụm sân / Sân</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Thời gian</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Khách hàng</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Giá</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trạng thái</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hành động</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Cụm sân / Sân</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Ngày đặt</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Loại</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Thời gian</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Khách hàng</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Giá</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Trạng thái</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -304,89 +328,57 @@ const OwnerBookings = () => {
                       const fieldInfo = getFieldInfo(booking.field_id);
                       return (
                         <tr key={booking.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-4">
-                            <div>
-                              <div className="font-medium text-gray-900">{fieldInfo.clusterName}</div>
-                              <div className="text-sm text-gray-500 flex items-center gap-1">
-                                <MapPin className="w-3 h-3" />
-                                {fieldInfo.fieldName}
+                          <td className="px-2 py-2">
+                            <div className="text-xs">
+                              <div className="font-medium text-gray-900 truncate max-w-[180px]">{fieldInfo.clusterName}</div>
+                              <div className="text-gray-500 flex items-center gap-1">
+                                <MapPin className="w-3 h-3 flex-shrink-0" />
+                                <span className="truncate">{fieldInfo.fieldName}</span>
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-1 text-sm">
-                              <Clock className="w-4 h-4 text-gray-400" />
+                          <td className="px-2 py-2 whitespace-nowrap">
+                            <div className="text-xs text-gray-700">
+                              {booking.booking_date ? format(new Date(booking.booking_date), 'dd/MM/yy', { locale: vi }) : 'N/A'}
+                            </div>
+                          </td>
+                          <td className="px-2 py-2">
+                            {booking.booking_type === 'tournament' ? (
+                              <Badge variant="secondary" className="bg-purple-100 text-purple-700 border-purple-300 text-xs px-2 py-0">
+                                🏆 Giải
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-gray-700 text-xs px-2 py-0">
+                                ⚽
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="px-2 py-2 whitespace-nowrap">
+                            <div className="text-xs text-gray-700">
                               {booking.start_time?.substring(0, 5) || '--:--'} - {booking.end_time?.substring(0, 5) || '--:--'}
                             </div>
                           </td>
-                          <td className="px-4 py-4">
-                            <div>
+                          <td className="px-2 py-2">
+                            <div className="text-xs">
                               <div className="font-medium text-gray-900 flex items-center gap-1">
-                                <User className="w-3 h-3" />
-                                {booking.customer_name || 'N/A'}
+                                <User className="w-3 h-3 flex-shrink-0" />
+                                <span className="truncate max-w-[120px]">{booking.customer_name || 'N/A'}</span>
                               </div>
                               {booking.customer_phone && (
-                                <div className="text-sm text-gray-500 flex items-center gap-1">
-                                  <Phone className="w-3 h-3" />
+                                <div className="text-gray-500 flex items-center gap-1">
+                                  <Phone className="w-3 h-3 flex-shrink-0" />
                                   {booking.customer_phone}
                                 </div>
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-4">
-                            <div className="font-medium text-gray-900 flex items-center gap-1">
-                              <DollarSign className="w-4 h-4 text-green-600" />
+                          <td className="px-2 py-2 whitespace-nowrap">
+                            <div className="font-medium text-gray-900 text-xs">
                               {formatCurrency(booking.total_price)}
                             </div>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-2 py-2">
                             {getStatusBadge(booking.status)}
-                          </td>
-                          <td className="px-4 py-4 text-right space-x-2">
-                            {booking.status === 'pending' && (
-                              <>
-                                <Button 
-                                  size="sm" 
-                                  variant="default"
-                                  onClick={() => handleConfirmBooking(booking.id)}
-                                  disabled={actioningId === booking.id}
-                                  className="gap-1"
-                                >
-                                  {actioningId === booking.id ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  ) : (
-                                    <CheckCircle className="w-3 h-3" />
-                                  )}
-                                  Xác nhận
-                                </Button>
-                                <Button 
-                                  size="sm" 
-                                  variant="destructive"
-                                  onClick={() => handleCancelBooking(booking.id)}
-                                  disabled={actioningId === booking.id}
-                                  className="gap-1"
-                                >
-                                  {actioningId === booking.id ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  ) : (
-                                    <XCircle className="w-3 h-3" />
-                                  )}
-                                  Hủy
-                                </Button>
-                              </>
-                            )}
-                            {booking.status === 'confirmed' && (
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => handleCancelBooking(booking.id)}
-                                disabled={actioningId === booking.id}
-                                className="gap-1"
-                              >
-                                <XCircle className="w-3 h-3" />
-                                Hủy
-                              </Button>
-                            )}
                           </td>
                         </tr>
                       );

@@ -65,7 +65,7 @@ const OwnerDashboard = () => {
     },
     {
       title: 'Doanh Thu Tháng',
-      value: `${(stats.monthRevenue / 1000000).toFixed(1)}M VNĐ`,
+      value: `${(stats.monthRevenue / 1000000).toFixed(1)}M ₫`,
       icon: DollarSign,
       color: 'text-orange-600',
       bgColor: 'bg-orange-100',

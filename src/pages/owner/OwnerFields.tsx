@@ -402,7 +402,7 @@ const OwnerFields = () => {
       if (priceForm.price_hour <= 0) {
         toast({
           title: 'Lỗi',
-          description: 'Giá phải lớn hơn 0 VNĐ',
+          description: 'Giá phải lớn hơn 0 ₫',
           variant: 'destructive',
         });
         return;
@@ -495,7 +495,7 @@ const OwnerFields = () => {
       if (tournamentPriceForm.price_per_session <= 0) {
         toast({
           title: 'Lỗi',
-          description: 'Giá phải lớn hơn 0 VNĐ',
+          description: 'Giá phải lớn hơn 0 ₫',
           variant: 'destructive',
         });
         return;
@@ -1255,7 +1255,7 @@ const OwnerFields = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="price_hour">Giá mỗi giờ (VNĐ)</Label>
+                <Label htmlFor="price_hour">Giá mỗi giờ (₫)</Label>
                 <Input
                   id="price_hour"
                   type="number"
@@ -1345,7 +1345,7 @@ const OwnerFields = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="tournament_price">Giá (VNĐ)</Label>
+                <Label htmlFor="tournament_price">Giá (₫)</Label>
                 <Input
                   id="tournament_price"
                   type="number"

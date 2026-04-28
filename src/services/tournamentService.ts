@@ -212,12 +212,22 @@ export const tournamentService = {
 
     try {
       // Có token → dùng authenticated endpoint (GET /api/tournaments/{id}) để xem được cả draft
-      const hasToken = !!localStorage.getItem('access_token');
+      const hasToken = !!sessionStorage.getItem('access_token');
       const endpoint = hasToken ? `/tournaments/${id}` : `/public/tournaments/${id}`;
 
+      console.log(`🌐 [API] Calling: ${endpoint}`);
       const response = await api.get(endpoint);
+      console.log('📦 [API] Raw response:', response.data);
+      
       const result = parseResponse(response.data);
-      if (result) return result;
+      if (result) {
+        console.log('✅ [API] Parsed tournament:', {
+          id: result.id,
+          payment_status: result.payment_status,
+          payment_method: result.payment_method,
+        });
+        return result;
+      }
 
       console.error('❌ Could not parse tournament data:', response.data);
       throw new Error('Không tìm thấy dữ liệu giải đấu hợp lệ từ API');
@@ -458,13 +468,16 @@ export const tournamentService = {
   // Owner xác nhận thanh toán (approve/reject)
   confirmPayment: async (id: number, action: 'approve' | 'reject', note?: string): Promise<any> => {
     try {
+      console.log(`🏦 [API] Confirming payment for tournament ${id}:`, { action, note });
       const response = await api.put(`/tournaments/${id}/confirm-payment`, { 
         action,
         note: note || (action === 'approve' ? 'Đã xác nhận thanh toán' : 'Từ chối thanh toán')
       });
+      console.log('✅ [API] Payment confirmation response:', response.data);
       return response.data;
-    } catch (error) {
-      console.error(`Error confirming payment for tournament ${id}:`, error);
+    } catch (error: any) {
+      console.error(`❌ [API] Error confirming payment for tournament ${id}:`, error);
+      console.error('Response data:', error?.response?.data);
       throw error;
     }
   },

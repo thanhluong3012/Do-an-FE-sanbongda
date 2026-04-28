@@ -4,19 +4,51 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
   Phone, MapPin, User, Building2, Banknote, 
-  CheckCircle, Clock, AlertCircle, Copy 
+  CheckCircle, Clock, AlertCircle, Copy, RefreshCw 
 } from 'lucide-react';
 import { Tournament } from '@/services/tournamentService';
 import { useToast } from '@/hooks/use-toast';
+import { useState } from 'react';
 
 interface PaymentInfoCardProps {
   tournament: Tournament;
   onPublish?: () => void;
   isPublishing?: boolean;
+  onRefresh?: () => Promise<void>;
 }
 
-export const PaymentInfoCard = ({ tournament, onPublish, isPublishing }: PaymentInfoCardProps) => {
+export const PaymentInfoCard = ({ tournament, onPublish, isPublishing, onRefresh }: PaymentInfoCardProps) => {
   const { toast } = useToast();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // DEBUG: Log tournament data nhận được
+  console.log('🎫 [PaymentInfoCard] Tournament:', {
+    id: tournament.id,
+    name: tournament.name,
+    payment_method: tournament.payment_method,
+    payment_status: tournament.payment_status,
+    status: tournament.status,
+  });
+
+  const handleRefresh = async () => {
+    if (!onRefresh) return;
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+      toast({
+        title: 'Đã cập nhật',
+        description: 'Trạng thái thanh toán đã được cập nhật',
+      });
+    } catch (error) {
+      toast({
+        title: 'Lỗi',
+        description: 'Không thể cập nhật trạng thái',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -153,6 +185,27 @@ export const PaymentInfoCard = ({ tournament, onPublish, isPublishing }: Payment
                     Vui lòng liên hệ chủ sân để thanh toán tiền mặt. Sau khi chủ sân xác nhận, 
                     bạn có thể mở đăng ký giải đấu.
                   </p>
+                  {onRefresh && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleRefresh}
+                      disabled={isRefreshing}
+                      className="mt-3 bg-white"
+                    >
+                      {isRefreshing ? (
+                        <>
+                          <RefreshCw className="w-3 h-3 mr-2 animate-spin" />
+                          Đang cập nhật...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-3 h-3 mr-2" />
+                          Kiểm tra trạng thái thanh toán
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </>
               ) : (
                 <>
@@ -167,12 +220,12 @@ export const PaymentInfoCard = ({ tournament, onPublish, isPublishing }: Payment
         )}
 
         {isPaid && (
-          <Alert className="bg-green-50 border-green-200">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-sm text-green-800">
-              <strong>Thanh toán thành công!</strong>
-              <p className="text-xs mt-1">
-                Bạn đã hoàn thành thanh toán. Bây giờ bạn có thể mở đăng ký giải đấu.
+          <Alert className="bg-green-50 border-green-300 border-2">
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            <AlertDescription className="text-sm text-green-900">
+              <strong className="text-base">✅ Đã hoàn thành thanh toán!</strong>
+              <p className="text-xs mt-2">
+                Chủ sân đã xác nhận thanh toán của bạn. <strong>Bạn có thể mở đăng ký giải đấu ngay bây giờ!</strong>
               </p>
             </AlertDescription>
           </Alert>
@@ -195,18 +248,18 @@ export const PaymentInfoCard = ({ tournament, onPublish, isPublishing }: Payment
           <Button 
             onClick={onPublish} 
             disabled={isPublishing}
-            className="w-full"
+            className="w-full bg-green-600 hover:bg-green-700 text-white"
             size="lg"
           >
             {isPublishing ? (
               <>
-                <Clock className="w-4 h-4 mr-2 animate-spin" />
+                <Clock className="w-5 h-5 mr-2 animate-spin" />
                 Đang mở đăng ký...
               </>
             ) : (
               <>
-                <Banknote className="w-4 h-4 mr-2" />
-                Mở đăng ký giải đấu ngay
+                <CheckCircle className="w-5 h-5 mr-2" />
+                🎉 Mở đăng ký giải đấu ngay
               </>
             )}
           </Button>

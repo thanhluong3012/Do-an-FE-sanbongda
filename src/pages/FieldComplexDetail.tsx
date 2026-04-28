@@ -10,13 +10,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { 
   MapPin, Clock, ArrowLeft, Image as ImageIcon, 
   Building2, AlertCircle, DollarSign, CheckCircle2,
-  Phone, Calendar as CalendarIcon, Star, Zap, Users, Shield, LogIn
+  Phone, Calendar as CalendarIcon, Star, Zap, Users, Shield, LogIn,
+  QrCode, Wallet, Copy, Upload, Loader2
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { vi } from 'date-fns/locale';
 import { format, isWeekend } from 'date-fns';
 import { fieldComplexService, FieldComplex, SubField, FieldHourlyPrice } from '@/services/fieldComplexService';
+import { fieldService, BookedSlot } from '@/services/fieldService';
 import { bookingService, Booking } from '@/services/bookingService';
-import { useBookingSync, BookingUpdateMessage } from '@/hooks/useBookingSync';
+import { getOwner } from '@/services/ownerService';
+import { useBookingRealtimeSync, SyncMessage } from '@/hooks/useRealtimeSync';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -66,9 +73,22 @@ const FieldComplexDetail = () => {
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookedTimeSlots, setBookedTimeSlots] = useState<Set<string>>(new Set());
+  const [paymentMethod, setPaymentMethod] = useState<'transfer' | 'cash'>('transfer');
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [bookingResult, setBookingResult] = useState<any>(null);
+  const [paymentInfo, setPaymentInfo] = useState<any>(null);
+  const [ownerQRCode, setOwnerQRCode] = useState<string | null>(null);
 
   // Handler for date selection - reset time when date changes
   const handleDateSelect = (date: Date | undefined) => {
+    console.log('📅 User selected date:', {
+      newDate: date?.toISOString(),
+      newDateFormatted: date ? format(date, 'yyyy-MM-dd') : null,
+      previousDate: selectedDate?.toISOString(),
+      previousDateFormatted: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null,
+      isSameDate: date && selectedDate ? format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') : false
+    });
+    
     setSelectedDate(date);
     
     // Reset time selections khi đổi ngày để tránh giữ giờ không hợp lệ
@@ -78,40 +98,61 @@ const FieldComplexDetail = () => {
   };
 
   // Real-time sync between tabs
-  const handleBookingUpdate = useCallback((message: BookingUpdateMessage) => {
+  const handleBookingUpdate = useCallback((message: SyncMessage) => {
     // Reload bookings nếu update liên quan đến field và date hiện tại
     if (selectedField && selectedDate) {
       const currentDate = format(selectedDate, 'yyyy-MM-dd');
-      if (message.fieldId === selectedField.id && message.bookingDate === currentDate) {
-        console.log('Booking updated from another tab, reloading...');
+      if (message.relatedIds?.fieldId === selectedField.id && message.relatedIds?.bookingDate === currentDate) {
+        console.log('🔔 Booking updated from another tab, reloading...');
         loadBookingsForSelectedField();
         
         // Show notification
         if (toast) {
+          const actionText = message.type === 'booking_created' ? 'có booking mới' : 
+                             message.type === 'booking_cancelled' ? 'có booking bị hủy' : 'được cập nhật';
           toast({
-            title: 'Thông báo',
-            description: 'Khung giờ đã được cập nhật từ tab khác',
-            variant: 'default',
+            title: '🔄 Cập nhật real-time',
+            description: `Khung giờ ${actionText} từ tab khác`,
+            duration: 3000,
           });
         }
       }
     }
   }, [selectedField, selectedDate]);
 
-  const { broadcastBookingUpdate } = useBookingSync(handleBookingUpdate);
+  const { broadcast } = useBookingRealtimeSync(handleBookingUpdate, selectedField?.id);
+
+  // Helper function để format tiền VNĐ
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+    }).format(amount);
+  };
 
   useEffect(() => {
     if (id) {
-      loadFieldComplex();
-      loadSubFields();
-      loadFieldPrices(); // Load prices for the cluster
+      loadFieldComplex(); // Đã bao gồm fields và hourly_prices trong response
+      loadOwnerQRCode(); // Load owner QR code
     }
   }, [id]);
 
   // Load bookings khi chọn field hoặc date
   useEffect(() => {
+    console.log('🔄 useEffect triggered:', {
+      selectedField: selectedField?.id,
+      selectedFieldName: selectedField?.name,
+      selectedDate: selectedDate?.toISOString(),
+      selectedDateFormatted: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null
+    });
+    
     if (selectedField && selectedDate) {
       loadBookingsForSelectedField();
+    } else {
+      // Clear bookings nếu không có field hoặc date
+      console.log('⚠️ Clearing bookings - missing field or date');
+      setBookings([]);
+      setBookedTimeSlots(new Set());
     }
   }, [selectedField, selectedDate]);
 
@@ -123,10 +164,21 @@ const FieldComplexDetail = () => {
       const data = await fieldComplexService.getById(Number(id));
       if (data) {
         setFieldComplex(data);
+        
+        // Backend đã trả fields và hourly_prices trong response
+        // Không cần gọi API riêng nữa!
+        if (data.fields && data.fields.length > 0) {
+          setSubFields(data.fields);
+        }
+        if (data.hourly_prices && data.hourly_prices.length > 0) {
+          setFieldPrices(data.hourly_prices);
+        }
       }
     } catch (error: any) {
       console.error('Error loading field complex:', error);
       setFieldComplex(null);
+      setSubFields([]);
+      setFieldPrices([]);
       if (toast) {
         toast({
           title: 'Lỗi',
@@ -139,85 +191,127 @@ const FieldComplexDetail = () => {
     }
   };
 
-  const loadSubFields = async () => {
+  const loadOwnerQRCode = async () => {
     if (!id) return;
     
     try {
-      const data = await fieldComplexService.getFieldsByClusterId(Number(id));
-      if (data && data.length > 0) {
-        setSubFields(data);
+      // Load field cluster detail để lấy owner info
+      const cluster = await fieldComplexService.getById(Number(id));
+      console.log('🔍 Field Cluster Data:', cluster);
+      console.log('🔍 Owner Data:', cluster?.owner);
+      console.log('🔍 Owner ID:', cluster?.owner_id);
+      
+      // Check nếu cluster có owner relationship
+      if (cluster?.owner) {
+        // Trường hợp 1: Backend đã include owner (RECOMMENDED)
+        const qrCode = cluster.owner.qr_code_image 
+                    || cluster.owner.qr_code_url 
+                    || cluster.owner.qr_image;
+        
+        if (qrCode) {
+          console.log('✅ QR Code found from owner relationship:', qrCode);
+          setOwnerQRCode(qrCode);
+        } else {
+          console.log('❌ Owner chưa upload QR code');
+          setOwnerQRCode(null);
+        }
+      } else if (cluster?.owner_id) {
+        // Trường hợp 2: Backend chưa include owner, workaround bằng gọi API riêng
+        console.log('⚠️ Backend không trả owner relationship, đang gọi API riêng...');
+        try {
+          const ownerResponse = await getOwner(cluster.owner_id);
+          console.log('🔍 Owner fetched separately:', ownerResponse);
+          const owner = ownerResponse?.data || ownerResponse;
+          
+          const qrCode = owner?.qr_code_image 
+                      || owner?.qr_code_url 
+                      || owner?.qr_image;
+          
+          if (qrCode) {
+            console.log('✅ QR Code found from separate API:', qrCode);
+            setOwnerQRCode(qrCode);
+          } else {
+            console.log('❌ Owner chưa upload QR code');
+            setOwnerQRCode(null);
+          }
+        } catch (ownerError) {
+          console.error('Error fetching owner separately:', ownerError);
+          setOwnerQRCode(null);
+        }
+      } else {
+        console.log('❌ Không có owner_id trong cluster data');
+        setOwnerQRCode(null);
       }
-    } catch (error: any) {
-      console.error('Error loading sub fields:', error);
-      setSubFields([]);
-      if (toast) {
-        toast({
-          title: 'Lỗi',
-          description: 'Không thể tải danh sách sân. Vui lòng thử lại sau.',
-          variant: 'destructive',
-        });
-      }
+    } catch (error) {
+      console.error('Error loading owner QR code:', error);
+      setOwnerQRCode(null);
     }
   };
 
-  const loadFieldPrices = async () => {
-    if (!id) return;
-    
-    try {
-      const data = await fieldComplexService.getFieldClusterPrices(Number(id));
-      if (data && data.length > 0) {
-        setFieldPrices(data);
-      }
-    } catch (error: any) {
-      console.error('Error loading field prices:', error);
-      setFieldPrices([]);
-      if (toast) {
-        toast({
-          title: 'Lỗi',
-          description: 'Không thể tải bảng giá. Vui lòng thử lại sau.',
-          variant: 'destructive',
-        });
-      }
-    }
-  };
-
-  // Load bookings cho field và date đã chọn
+  // Load bookings cho field và date đã chọn - SỬ DỤNG API MỚI
   const loadBookingsForSelectedField = async () => {
     if (!selectedField || !selectedDate) return;
 
     try {
       const bookingDate = format(selectedDate, 'yyyy-MM-dd');
-      console.log('Loading bookings for field:', selectedField.id, 'date:', bookingDate);
+      console.log('🔍 Loading booked slots for field:', selectedField.id, 'date:', bookingDate);
       
-      const data = await bookingService.getBookingsByFieldAndDate(
-        selectedField.id,
-        bookingDate
-      );
+      // Clear old state BEFORE loading new data
+      console.log('🧹 Clearing old bookings state...');
+      setBookings([]);
+      setBookedTimeSlots(new Set());
       
-      console.log('Loaded bookings data:', data);
-      setBookings(data);
+      // ✅ GỌI API MỚI: /api/fields/{field_id}/booked-slots?date=YYYY-MM-DD
+      const bookedSlots = await fieldService.getBookedSlots(selectedField.id, bookingDate);
+      
+      console.log('📥 Received booked slots from API:', bookedSlots.length);
+      
+      // Convert bookedSlots thành bookings format (để giữ compatibility)
+      const bookingsData: Booking[] = bookedSlots.map((slot: BookedSlot) => ({
+        id: slot.id,
+        field_id: selectedField.id,
+        booking_date: bookingDate,
+        start_time: slot.start_time,
+        end_time: slot.end_time,
+        booking_type: slot.booking_type,
+        status: slot.status as any,
+        total_price: 0,
+      }));
+      
+      setBookings(bookingsData);
       
       // Tạo Set các khung giờ đã được đặt
-      const bookedSlots = new Set<string>();
-      data.forEach(booking => {
+      const bookedTimeSlots = new Set<string>();
+      console.log(`🔄 Processing ${bookedSlots.length} booked slots to mark time slots:`);
+      
+      bookedSlots.forEach((slot: BookedSlot, index: number) => {
         try {
-          const start = booking.start_time?.substring(0, 5) || '';
-          const end = booking.end_time?.substring(0, 5) || '';
+          const start = slot.start_time?.substring(0, 5) || '';
+          const end = slot.end_time?.substring(0, 5) || '';
+          
+          console.log(`  Slot ${index + 1}:`, {
+            id: slot.id,
+            time: `${start} - ${end}`,
+            type: slot.booking_type,
+            status: slot.status
+          });
+          
           if (start && end) {
             // Đánh dấu tất cả các time slots trong khoảng này
             const timeSlots = generateTimeSlotsInRange(start, end);
-            timeSlots.forEach(slot => bookedSlots.add(slot));
+            console.log(`    → Marking ${timeSlots.length} time slots as booked:`, timeSlots);
+            timeSlots.forEach(slot => bookedTimeSlots.add(slot));
           }
         } catch (err) {
-          console.error('Error processing booking:', booking, err);
+          console.error('Error processing slot:', slot, err);
         }
       });
-      setBookedTimeSlots(bookedSlots);
       
-      console.log('Loaded bookings:', data);
-      console.log('Booked time slots:', Array.from(bookedSlots));
+      console.log('🔒 Total booked time slots:', bookedTimeSlots.size);
+      console.log('🔒 Booked slots:', Array.from(bookedTimeSlots).sort());
+      setBookedTimeSlots(bookedTimeSlots);
     } catch (error: any) {
-      console.error('Error loading bookings:', error);
+      console.error('❌ Error loading booked slots:', error);
       // Set empty arrays on error to prevent crashes
       setBookings([]);
       setBookedTimeSlots(new Set());
@@ -396,15 +490,54 @@ const FieldComplexDetail = () => {
 
     try {
       const bookingDate = format(selectedDate, 'yyyy-MM-dd');
+      
+      // ✅ BƯỚC 1: CHECK AVAILABILITY TRƯỚC (API MỚI)
+      const SKIP_AVAILABILITY_CHECK = false; // ✅ Backend đã fix, enable check
+      
+      if (!SKIP_AVAILABILITY_CHECK) {
+        console.log('🔍 Checking availability with params:', {
+          fieldId: selectedField.id,
+          date: bookingDate,
+          start_time: startTime + ':00',
+          end_time: endTime + ':00',
+        });
+        
+        const availabilityCheck = await fieldService.checkAvailability(selectedField.id, {
+          date: bookingDate,
+          start_time: startTime + ':00', // Backend expects HH:mm:ss
+          end_time: endTime + ':00',
+        });
+        
+        console.log('📦 Availability check result:', availabilityCheck);
+        
+        if (!availabilityCheck.is_available) {
+          toast({
+            title: 'Khung giờ không khả dụng',
+            description: availabilityCheck.message || 'Khung giờ này đã có người đặt. Vui lòng chọn khung giờ khác.',
+            variant: 'destructive',
+          });
+          setCheckingAvailability(false);
+          setIsSubmitting(false);
+          return;
+        }
+        
+        console.log('✅ Availability check passed, proceeding with booking...');
+      } else {
+        console.log('⚠️ Skipping availability check (SKIP_AVAILABILITY_CHECK = true)');
+      }
+      
+      setCheckingAvailability(false);
+      
+      // ✅ BƯỚC 2: TẠO BOOKING
       const bookingData = {
         field_id: selectedField.id,
         booking_date: bookingDate,
         start_time: startTime,
         end_time: endTime,
         total_price: calculateTotalPrice(),
+        payment_method: paymentMethod,
       };
 
-      // Sử dụng bookingService với availability check và optimistic locking
       const result = await bookingService.createBooking(bookingData);
       
       console.log('✅ Booking result:', result);
@@ -413,29 +546,41 @@ const FieldComplexDetail = () => {
         try {
           console.log('Processing successful booking...');
           
+          // Lưu thông tin booking và payment_info
+          setBookingResult(result.booking || result.data);
+          setPaymentInfo(result.payment_info);
+          
           // Reset form trước để tránh re-submit
           setStartTime('');
           setEndTime('');
           
-          // Show success toast WITHOUT navigation action
+          // Show payment dialog
+          setShowPaymentDialog(true);
+          
+          // Show success toast WITH message from API
           if (toast) {
             toast({
               title: 'Đặt sân thành công! ✅',
-              description: `Đã đặt sân từ ${startTime} đến ${endTime} vào ${format(selectedDate, 'dd/MM/yyyy')}`,
+              description: result.message || `Đã đặt sân từ ${startTime} đến ${endTime} vào ${format(selectedDate, 'dd/MM/yyyy')}`,
               duration: 5000,
             });
           }
 
           // Broadcast update tới các tab khác
-          console.log('Broadcasting update...');
-          broadcastBookingUpdate({
+          console.log('📡 Broadcasting booking update...');
+          broadcast({
             type: 'booking_created',
-            fieldId: selectedField.id,
-            bookingDate: bookingDate,
-            startTime: startTime,
-            endTime: endTime,
-            bookingId: result.data?.id,
-            timestamp: Date.now()
+            entityId: result.data?.id || result.booking?.id || 0,
+            entityType: 'booking',
+            relatedIds: {
+              fieldId: selectedField.id,
+              bookingDate: bookingDate,
+            },
+            data: {
+              startTime: startTime,
+              endTime: endTime,
+              totalPrice: result.booking?.total_price || result.data?.total_price,
+            },
           });
 
           // Reload bookings để cập nhật UI
@@ -453,11 +598,11 @@ const FieldComplexDetail = () => {
         //   navigate('/my-bookings');
         // }, 2000);
       } else {
-        // Booking failed - show error
+        // Booking failed - show error WITH message from API
         if (toast) {
           toast({
             title: 'Không thể đặt sân',
-            description: result.error || 'Khung giờ này không còn trống hoặc đã được đặt bởi người khác.',
+            description: result.error || result.message || 'Khung giờ này không còn trống hoặc đã được đặt bởi người khác.',
             variant: 'destructive',
           });
         }
@@ -760,7 +905,7 @@ const FieldComplexDetail = () => {
                     </div>
                     Bảng giá - {getFieldTypeName(selectedField.field_type)}
                   </CardTitle>
-                  <CardDescription>Giá theo loại ngày (VNĐ/giờ)</CardDescription>
+                  <CardDescription>Giá theo loại ngày (₫/giờ)</CardDescription>
                 </CardHeader>
                 <CardContent className="pt-6">
                   <div className="overflow-x-auto">
@@ -825,7 +970,7 @@ const FieldComplexDetail = () => {
                                 <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-950 rounded-lg">
                                   <DollarSign className="w-4 h-4 text-green-600" />
                                   <span className="font-semibold text-green-700 dark:text-green-400">
-                                    {weekdayPrice ? Number(weekdayPrice.price_hour).toLocaleString('vi-VN') : '-'}
+                                    {weekdayPrice ? formatCurrency(Number(weekdayPrice.price_hour)) : '-'}
                                   </span>
                                 </div>
                               </td>
@@ -833,7 +978,7 @@ const FieldComplexDetail = () => {
                                 <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-50 dark:bg-orange-950 rounded-lg">
                                   <DollarSign className="w-4 h-4 text-orange-600" />
                                   <span className="font-semibold text-orange-700 dark:text-orange-400">
-                                    {weekendPrice ? Number(weekendPrice.price_hour).toLocaleString('vi-VN') : '-'}
+                                    {weekendPrice ? formatCurrency(Number(weekendPrice.price_hour)) : '-'}
                                   </span>
                                 </div>
                               </td>
@@ -1145,6 +1290,47 @@ const FieldComplexDetail = () => {
                       </Select>
                     </div>
 
+                    {/* Payment Method Selection */}
+                    {startTime && endTime && totalHours > 0 && (
+                      <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-xl border-2 border-blue-200 dark:border-blue-800">
+                        <h4 className="font-semibold text-sm mb-3 text-blue-900 dark:text-blue-200">
+                          Phương thức thanh toán
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setPaymentMethod('transfer')}
+                            className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center gap-2 ${
+                              paymentMethod === 'transfer'
+                                ? 'border-primary bg-primary/10 shadow-md'
+                                : 'border-border hover:border-primary/50'
+                            }`}
+                          >
+                            <QrCode className={`w-6 h-6 ${paymentMethod === 'transfer' ? 'text-primary' : 'text-muted-foreground'}`} />
+                            <div className="text-center">
+                              <div className="font-medium text-sm">Chuyển khoản</div>
+                              <div className="text-xs text-muted-foreground">Quét mã QR</div>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPaymentMethod('cash')}
+                            className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center gap-2 ${
+                              paymentMethod === 'cash'
+                                ? 'border-primary bg-primary/10 shadow-md'
+                                : 'border-border hover:border-primary/50'
+                            }`}
+                          >
+                            <Wallet className={`w-6 h-6 ${paymentMethod === 'cash' ? 'text-primary' : 'text-muted-foreground'}`} />
+                            <div className="text-center">
+                              <div className="font-medium text-sm">Tiền mặt</div>
+                              <div className="text-xs text-muted-foreground">Thanh toán tại sân</div>
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {startTime && endTime && totalHours > 0 && (
                       <div className="p-5 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 rounded-xl border-2 border-green-200 dark:border-green-800 space-y-3">
                         <h4 className="font-semibold text-sm flex items-center gap-2 text-green-800 dark:text-green-200">
@@ -1166,12 +1352,8 @@ const FieldComplexDetail = () => {
                         <div className="pt-3 border-t-2 border-green-200 dark:border-green-800">
                           <div className="flex justify-between items-center">
                             <span className="font-semibold text-muted-foreground">Tổng tiền:</span>
-                            <div className="text-right">
-                              <div className="text-2xl font-bold text-primary flex items-center gap-1">
-                                <DollarSign className="w-5 h-5" />
-                                {totalPrice.toLocaleString('vi-VN')}
-                              </div>
-                              <span className="text-xs text-muted-foreground">VNĐ</span>
+                            <div className="text-2xl font-bold text-primary">
+                              {formatCurrency(totalPrice)}
                             </div>
                           </div>
                         </div>
@@ -1199,7 +1381,7 @@ const FieldComplexDetail = () => {
                   ) : selectedField && selectedDate && startTime && endTime && totalHours > 0 ? (
                     <span className="flex items-center gap-2">
                       <CheckCircle2 className="w-5 h-5" />
-                      Đặt sân - {totalPrice.toLocaleString('vi-VN')} VNĐ
+                      Đặt sân - {formatCurrency(totalPrice)}
                     </span>
                   ) : (
                     <span className="flex items-center gap-2">
@@ -1218,6 +1400,231 @@ const FieldComplexDetail = () => {
         </div>
       </main>
       <Footer />
+
+      {/* Payment Information Dialog */}
+      {bookingResult && paymentInfo && (
+        <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-2xl">
+                <CheckCircle2 className="w-6 h-6 text-green-600" />
+                Đặt sân thành công!
+              </DialogTitle>
+              <DialogDescription>
+                Booking #{bookingResult.id} - Tổng tiền: <span className="font-bold text-primary">{formatCurrency(bookingResult.total_price || 0)}</span>
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-6">
+              {/* API Success Message - Hiển thị nếu có */}
+              {(paymentInfo?.instruction || bookingResult?.message) && (
+                <Alert className="bg-green-50 border-green-200">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-sm text-green-800">
+                    {paymentInfo?.instruction || bookingResult?.message || 'Đặt sân thành công!'}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Transfer Payment */}
+              {paymentMethod === 'transfer' && (
+                <div className="space-y-4">{/* QR Code */}
+                  {ownerQRCode ? (
+                    <Card>
+                      <CardContent className="pt-6 text-center">
+                        <h3 className="font-semibold mb-4 flex items-center justify-center gap-2">
+                          <QrCode className="w-5 h-5 text-primary" />
+                          Quét mã QR để chuyển khoản
+                        </h3>
+                        <img 
+                          src={ownerQRCode} 
+                          alt="QR Code thanh toán" 
+                          className="max-w-xs w-full mx-auto border-2 border-border rounded-lg"
+                        />
+                        <p className="text-xs text-muted-foreground mt-3">
+                          Mã QR chuyển khoản của chủ sân
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Alert className="bg-orange-50 border-orange-200">
+                      <AlertCircle className="h-4 w-4 text-orange-600" />
+                      <AlertDescription className="text-orange-800">
+                        <strong>Chủ sân chưa cập nhật mã QR.</strong> Vui lòng liên hệ trực tiếp với chủ sân để được hướng dẫn thanh toán.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Transfer Note - Hiển thị nếu backend trả về */}
+                  {paymentInfo && paymentInfo.transfer_note && (
+                    <Card className="bg-primary/5 border-primary/20">
+                      <CardContent className="pt-6">
+                        <p className="text-sm font-medium text-muted-foreground mb-2">
+                          Nội dung chuyển khoản:
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 bg-background px-4 py-3 rounded-lg text-lg font-bold text-primary border-2 border-primary">
+                            {paymentInfo.transfer_note}
+                          </code>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              navigator.clipboard.writeText(paymentInfo.transfer_note);
+                              toast({ title: 'Đã sao chép', description: 'Đã sao chép nội dung chuyển khoản' });
+                            }}
+                          >
+                            <Copy className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          * Vui lòng ghi đúng nội dung này khi chuyển khoản
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Thông tin chủ sân */}
+                  {fieldComplex && (
+                    <Card>
+                      <CardContent className="pt-6">
+                        <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-primary" />
+                          Thông tin chủ sân
+                        </h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
+                            <span className="text-muted-foreground">Cụm sân:</span>
+                            <span className="font-medium">{fieldComplex.name}</span>
+                          </div>
+                          {fieldComplex.address && (
+                            <div className="flex items-start gap-2 p-2 bg-muted/50 rounded-lg">
+                              <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                              <div className="flex-1">
+                                <span className="text-xs text-muted-foreground block">Địa chỉ:</span>
+                                <span className="text-sm">{fieldComplex.address}</span>
+                              </div>
+                            </div>
+                          )}
+                          {fieldComplex.phone && (
+                            <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
+                              <span className="text-muted-foreground flex items-center gap-2">
+                                <Phone className="w-4 h-4" />
+                                Liên hệ:
+                              </span>
+                              <a href={`tel:${fieldComplex.phone}`} className="font-medium text-primary hover:underline">
+                                {fieldComplex.phone}
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  <Alert className="bg-blue-50 border-blue-200">
+                    <AlertDescription className="text-sm text-blue-800">
+                      <strong>📋 Hướng dẫn:</strong>
+                      <ol className="list-decimal list-inside mt-2 space-y-1 text-xs">
+                        <li>Quét mã QR bằng app ngân hàng của bạn</li>
+                        <li>Chuyển khoản đúng số tiền: <strong>{formatCurrency(bookingResult.total_price || 0)}</strong></li>
+                        <li>Ghi nội dung chuyển khoản nếu có</li>
+                        <li>Sau khi chuyển khoản, vào <strong>Lịch sử đặt sân</strong> để upload ảnh bill</li>
+                      </ol>
+                    </AlertDescription>
+                  </Alert>
+
+                  <Alert className="bg-yellow-50 border-yellow-200">
+                    <AlertDescription className="text-yellow-800">
+                      Sau khi chuyển khoản, vui lòng vào <strong>Lịch sử đặt sân</strong> để upload ảnh bill chuyển khoản.
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              )}
+
+              {/* Cash Payment */}
+              {paymentMethod === 'cash' && paymentInfo.owner_contact && (
+                <div className="space-y-4">
+                  <Alert className="bg-amber-50 border-amber-200">
+                    <Wallet className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-sm text-amber-800">
+                      <strong>Thanh toán bằng tiền mặt trực tiếp tại sân.</strong>
+                      {paymentInfo.instruction && <span> {paymentInfo.instruction}</span>}
+                    </AlertDescription>
+                  </Alert>
+
+                  <Card>
+                    <CardContent className="pt-6 space-y-4">
+                      <h3 className="font-semibold flex items-center gap-2">
+                        <Building2 className="w-5 h-5 text-primary" />
+                        Thông tin liên hệ chủ sân
+                      </h3>
+
+                      <div className="space-y-3">
+                        <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                          <Building2 className="w-5 h-5 text-muted-foreground mt-0.5" />
+                          <div>
+                            <p className="text-sm text-muted-foreground">Tên sân</p>
+                            <p className="font-medium">{paymentInfo.owner_contact.name}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                          <Phone className="w-5 h-5 text-muted-foreground mt-0.5" />
+                          <div>
+                            <p className="text-sm text-muted-foreground">Số điện thoại</p>
+                            <p className="font-medium">{paymentInfo.owner_contact.phone}</p>
+                          </div>
+                        </div>
+
+                        {paymentInfo.owner_contact.address && (
+                          <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                            <MapPin className="w-5 h-5 text-muted-foreground mt-0.5" />
+                            <div>
+                              <p className="text-sm text-muted-foreground">Địa chỉ</p>
+                              <p className="font-medium">{paymentInfo.owner_contact.address}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Alert className="bg-yellow-50 border-yellow-200">
+                    <AlertDescription className="text-yellow-800">
+                      Vui lòng liên hệ chủ sân để thanh toán tiền mặt và xác nhận đặt sân.
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setShowPaymentDialog(false);
+                    setBookingResult(null);
+                    setPaymentInfo(null);
+                  }}
+                >
+                  Đóng
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    setShowPaymentDialog(false);
+                    navigate('/my-bookings');
+                  }}
+                >
+                  Xem lịch sử đặt sân
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };

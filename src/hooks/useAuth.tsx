@@ -1,5 +1,6 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import api from '@/lib/axios';
+import { getAuthToken, setAuthToken, removeAuthToken, getAuthUser, setAuthUser, removeAuthUser } from '@/lib/authStorage';
 
 // Định nghĩa kiểu dữ liệu cho User và Session
 interface User {
@@ -51,10 +52,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Kiểm tra và verify session từ localStorage khi component mount
+    // Kiểm tra và verify session từ storage khi component mount
     const checkAuth = async () => {
-      const token = localStorage.getItem('access_token');
-      const storedUser = localStorage.getItem('user');
+      const token = getAuthToken();
+      const storedUser = getAuthUser();
       
       // Nếu không có token hoặc user, set trạng thái chưa đăng nhập
       if (!token || !storedUser) {
@@ -65,8 +66,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       try {
-        // Parse user data
-        const parsedUser = JSON.parse(storedUser);
+        // User data đã parsed
+        const parsedUser = storedUser;
         
         // QUAN TRỌNG: Verify token với backend để đảm bảo còn hợp lệ
         // Gọi API để check user profile (sẽ fail nếu token expired/invalid)
@@ -78,8 +79,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUser(validUser);
           setSession({ access_token: token, user: validUser });
           
-          // Cập nhật lại localStorage với data mới nhất từ backend
-          localStorage.setItem('user', JSON.stringify(validUser));
+          // Cập nhật lại storage với data mới nhất từ backend
+          setAuthUser(validUser);
           
           console.log('✅ Token verified, user authenticated:', validUser.email);
         } else {
@@ -88,8 +89,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch (error: any) {
         // Token không hợp lệ hoặc expired, clear toàn bộ
         console.warn('⚠️ Token verification failed, clearing auth data:', error.message);
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user');
+        removeAuthToken();
+        removeAuthUser();
         setUser(null);
         setSession(null);
       } finally {
@@ -194,13 +195,12 @@ const signUp = async (email: string, password: string, fullName: string, passwor
         throw new Error('Dữ liệu user không hợp lệ từ server');
       }
       
-      // Lưu token và user vào localStorage
+      // Lưu token và user vào storage
       console.log('✅ Login successful:', userData.email);
       console.log('👤 User role:', userData.role_id || userData.role?.id || 'N/A');
       
-      localStorage.setItem('access_token', token);
-      localStorage.setItem('user', JSON.stringify(userData));
-      localStorage.setItem('auth_timestamp', Date.now().toString());
+      setAuthToken(token);
+      setAuthUser(userData);
       
       // Set state
       setUser(userData);
@@ -246,10 +246,9 @@ const signUp = async (email: string, password: string, fullName: string, passwor
       console.error('Logout API error:', error);
       // Vẫn tiếp tục clear localStorage dù API fail
     } finally {
-      // Xóa TẤT CẢ auth data khỏi localStorage
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('auth_timestamp');
+      // Xóa TẤT CẢ auth data khỏi storage
+      removeAuthToken();
+      removeAuthUser();
       
       // Clear state
       setUser(null);

@@ -6,29 +6,22 @@
  * - window.getAuthInfo() - Get current auth status
  */
 
-// Clear tất cả auth data từ localStorage
+import { getAuthToken, getAuthUser, getAuthTimestamp, clearAuthData as clearStorage } from './authStorage';
+
+// Clear tất cả auth data
 export const clearAuthData = (): void => {
   console.log('🧹 Clearing all authentication data...');
-  
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('user');
-  localStorage.removeItem('auth_timestamp');
-  
+  clearStorage();
   console.log('✅ Auth data cleared. Please refresh the page.');
 };
 
 // Get auth info để debug
 export const getAuthInfo = (): object => {
-  const token = localStorage.getItem('access_token');
-  const user = localStorage.getItem('user');
-  const timestamp = localStorage.getItem('auth_timestamp');
+  const token = getAuthToken();
+  const user = getAuthUser();
+  const timestamp = getAuthTimestamp();
   
-  let parsedUser = null;
-  try {
-    parsedUser = user ? JSON.parse(user) : null;
-  } catch (e) {
-    parsedUser = 'Invalid JSON';
-  }
+  const parsedUser = user || null;
   
   const info = {
     hasToken: !!token,
@@ -44,7 +37,7 @@ export const getAuthInfo = (): object => {
 
 // Check if token is expired (if backend returns exp in token)
 export const isTokenExpired = (): boolean => {
-  const token = localStorage.getItem('access_token');
+  const token = getAuthToken();
   if (!token) return true;
   
   try {
@@ -78,7 +71,7 @@ export const forceLogout = (): void => {
 };
 
 // Export to window for easy access in console (development only)
-if (process.env.NODE_ENV === 'development') {
+if (import.meta.env.DEV) {
   (window as any).clearAuth = clearAuthData;
   (window as any).getAuthInfo = getAuthInfo;
   (window as any).isTokenExpired = isTokenExpired;
@@ -119,8 +112,8 @@ export const isValidTokenFormat = (token: string): boolean => {
 
 // Auto-clear invalid auth data on import
 const autoCleanup = () => {
-  const token = localStorage.getItem('access_token');
-  const user = localStorage.getItem('user');
+  const token = getAuthToken();
+  const user = getAuthUser();
   
   if (token && !isValidTokenFormat(token)) {
     console.warn('⚠️ Invalid token format detected, clearing...');
@@ -128,17 +121,9 @@ const autoCleanup = () => {
     return;
   }
   
-  if (user) {
-    try {
-      const parsedUser = JSON.parse(user);
-      if (!isValidUser(parsedUser)) {
-        console.warn('⚠️ Invalid user data detected, clearing...');
-        clearAuthData();
-      }
-    } catch (e) {
-      console.warn('⚠️ Corrupted user data detected, clearing...');
-      clearAuthData();
-    }
+  if (user && !isValidUser(user)) {
+    console.warn('⚠️ Invalid user data detected, clearing...');
+    clearAuthData();
   }
 };
 

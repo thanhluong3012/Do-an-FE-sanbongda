@@ -8,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Tournament, tournamentService, TournamentBracket, FieldBooking } from '@/services/tournamentService';
+import { useTournamentRealtimeSync, SyncMessage } from '@/hooks/useRealtimeSync';
+import { useCallback } from 'react';
 import { registrationService, RegistrationRequest, TournamentRegistration } from '@/services/registrationService';
 import { matchService, Match } from '@/services/matchService';
 import { GroupStanding } from '@/services/standingsService';
@@ -78,6 +80,35 @@ const TournamentDetail = () => {
   // Registrations tab
   const [registrations, setRegistrations] = useState<TournamentRegistration[]>([]);
   const [regLoading, setRegLoading] = useState(false);
+
+  // Real-time sync từ Owner khi confirm payment
+  const handleTournamentUpdate = useCallback((message: SyncMessage) => {
+    // Chỉ reload nếu là tournament hiện tại
+    const tournamentId = parseInt(id || '0');
+    if (message.relatedIds?.tournamentId === tournamentId) {
+      console.log('🔔 [Tournament Detail] Payment status updated from another tab');
+      
+      if (message.type === 'payment_confirmed') {
+        toast({
+          title: '✅ Thanh toán đã được xác nhận',
+          description: 'Owner đã xác nhận thanh toán của bạn',
+          duration: 5000,
+        });
+        // Reload tournament để cập nhật payment_status
+        loadTournament();
+      } else if (message.type === 'payment_rejected') {
+        toast({
+          title: '❌ Thanh toán bị từ chối',
+          description: 'Vui lòng kiểm tra lại và upload bill mới',
+          variant: 'destructive',
+          duration: 5000,
+        });
+        loadTournament();
+      }
+    }
+  }, [id]);
+
+  useTournamentRealtimeSync(handleTournamentUpdate, parseInt(id || '0'));
   const [regError, setRegError] = useState<string | null>(null);
 
   // Matches tab - use Bracket structure
@@ -165,7 +196,7 @@ const TournamentDetail = () => {
     if (tournamentId) {
       loadTournament();
       // Chỉ gọi API cần auth khi có token
-      const hasToken = !!localStorage.getItem('access_token');
+      const hasToken = !!sessionStorage.getItem('access_token');
       if (hasToken) {
         loadRegistrations();
         loadTeams();
@@ -198,12 +229,31 @@ const TournamentDetail = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournament?.id, user?.id]);
 
+  // Auto-refresh tournament khi user quay lại trang (sau khi owner xác nhận thanh toán)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (tournamentId && tournament) {
+        // Chỉ reload nếu đang chờ thanh toán
+        if (tournament.payment_status === 'pending' && tournament.payment_method) {
+          loadTournament();
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournamentId, tournament?.payment_status, tournament?.payment_method]);
+
   // ---- loaders ----
   const loadTournament = async () => {
     setIsLoading(true);
     setTournamentError(null);
     try {
       const data = await tournamentService.getById(tournamentId);
+      console.log('🔍 [DEBUG] Tournament data từ API:', data);
+      console.log('💰 payment_status:', data.payment_status);
+      console.log('💳 payment_method:', data.payment_method);
       setTournament(data);
     } catch (err: any) {
       setTournamentError(err.response?.data?.message || 'Không thể tải thông tin giải đấu.');
@@ -214,7 +264,7 @@ const TournamentDetail = () => {
 
   const loadRegistrations = async () => {
     // Chỉ gọi khi có token (API cần auth)
-    if (!localStorage.getItem('access_token')) return;
+    if (!sessionStorage.getItem('access_token')) return;
     
     setRegLoading(true);
     setRegError(null);
@@ -260,7 +310,7 @@ const TournamentDetail = () => {
 
   const loadTeams = async () => {
     // Chỉ gọi khi có token (API cần auth)
-    if (!localStorage.getItem('access_token')) return;
+    if (!sessionStorage.getItem('access_token')) return;
     try {
       const data = await teamService.getAll();
       setTeams(Array.isArray(data) ? data : []);
@@ -608,6 +658,7 @@ const TournamentDetail = () => {
                 tournament={tournament}
                 onPublish={handlePublish}
                 isPublishing={isPublishing}
+                onRefresh={loadTournament}
               />
             </div>
           )}
