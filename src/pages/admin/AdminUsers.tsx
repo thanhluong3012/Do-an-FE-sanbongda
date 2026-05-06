@@ -29,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Plus, Edit, Trash2, Shield, Mail, Calendar, Loader2, AlertCircle } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Shield, Mail, Calendar, Loader2, AlertCircle, Lock, Unlock } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import api from '@/lib/axios';
 import { useToast } from '@/hooks/use-toast';
@@ -67,6 +67,10 @@ const AdminUsers = () => {
   const [userToEdit, setUserToEdit] = useState<any>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', role: 'user', status: 'active' });
 
+  // State cho dialog khóa/mở khóa
+  const [lockDialogOpen, setLockDialogOpen] = useState(false);
+  const [userToLock, setUserToLock] = useState<{ id: number; name: string; isActive: boolean } | null>(null);
+
   // Call API user
   const fetchUsser = async () => {
     try {
@@ -93,12 +97,16 @@ const AdminUsers = () => {
         // Tìm role name từ role_id (API trả về name_role, không phải name)
         const userRole = rolesData.find((r: any) => r.id === user.role_id);
         const roleName = userRole?.name_role || 'Member';
+
+        // Chuẩn hoá status: API có thể trả về 1/0, true/false, "active"/"inactive"
+        const rawStatus = user.status;
+        const isActive = rawStatus === 1 || rawStatus === true || rawStatus === 'active' || rawStatus === '1';
       
         return {
           ...user,
           role: user.role || roleName.toLowerCase(),
           role_name: roleName,
-          status: user.status || 'active',
+          status: isActive ? 'active' : 'inactive',
           joinDate: user.created_at ? new Date(user.created_at).toLocaleDateString('vi-VN') : 'N/A',
           bookings: user.bookings || 0,
         };
@@ -205,6 +213,47 @@ const AdminUsers = () => {
       });
       
       console.error('Error deleting user:', err);
+    }
+  };
+
+  // Hàm mở dialog khóa/mở khóa
+  const handleLockClick = (user: any) => {
+    setUserToLock({ id: user.id, name: user.name, isActive: user.status === 'active' });
+    setLockDialogOpen(true);
+  };
+
+  // Hàm xác nhận khóa/mở khóa tài khoản
+  const confirmToggleLock = async () => {
+    if (!userToLock) return;
+
+    const newStatus = !userToLock.isActive; // true = mở khóa, false = khóa
+    try {
+      await api.put(`/users/${userToLock.id}`, { status: newStatus });
+
+      // Cập nhật state ngay lập tức
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userToLock.id
+            ? { ...u, status: newStatus ? 'active' : 'inactive' }
+            : u
+        )
+      );
+
+      toast({
+        title: 'Thành công',
+        description: newStatus
+          ? `Đã mở khóa tài khoản "${userToLock.name}"`
+          : `Đã khóa tài khoản "${userToLock.name}"`,
+      });
+
+      setLockDialogOpen(false);
+      setUserToLock(null);
+    } catch (err: any) {
+      toast({
+        title: 'Lỗi',
+        description: err.response?.data?.message || 'Cập nhật trạng thái thất bại',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -380,14 +429,25 @@ const AdminUsers = () => {
                             variant="ghost" 
                             className="h-8 w-8 p-0"
                             onClick={() => handleEditClick(user)}
+                            title="Chỉnh sửa"
                           >
                             <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className={`h-8 w-8 p-0 ${user.status === 'active' ? 'text-orange-600 hover:text-orange-700' : 'text-green-600 hover:text-green-700'}`}
+                            onClick={() => handleLockClick(user)}
+                            title={user.status === 'active' ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
+                          >
+                            {user.status === 'active' ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
                           </Button>
                           <Button 
                             size="sm" 
                             variant="ghost" 
                             className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
                             onClick={() => handleDeleteClick(user.id, user.name)}
+                            title="Xóa"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -482,6 +542,43 @@ const AdminUsers = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Dialog xác nhận khóa/mở khóa */}
+        <AlertDialog open={lockDialogOpen} onOpenChange={setLockDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {userToLock?.isActive ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {userToLock?.isActive ? (
+                  <>
+                    Bạn có chắc chắn muốn <strong>khóa</strong> tài khoản của{' '}
+                    <strong>"{userToLock?.name}"</strong>?
+                    <br />
+                    Người dùng này sẽ không thể đăng nhập cho đến khi được mở khóa.
+                  </>
+                ) : (
+                  <>
+                    Bạn có chắc chắn muốn <strong>mở khóa</strong> tài khoản của{' '}
+                    <strong>"{userToLock?.name}"</strong>?
+                    <br />
+                    Người dùng này sẽ có thể đăng nhập lại bình thường.
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Hủy</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmToggleLock}
+                className={userToLock?.isActive ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'}
+              >
+                {userToLock?.isActive ? 'Khóa tài khoản' : 'Mở khóa'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Dialog xác nhận xóa */}
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

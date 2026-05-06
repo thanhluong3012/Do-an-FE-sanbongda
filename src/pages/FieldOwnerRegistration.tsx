@@ -7,12 +7,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ImageUpload } from '@/components/ui/image-upload';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, EyeOff, Mail, Lock, User, Phone, MapPin, Building2, FileText, IdCard } from 'lucide-react';
+import { Mail, User, Phone, MapPin, Building2, FileText, IdCard } from 'lucide-react';
 import { z } from 'zod';
 import api from '@/lib/axios';
 
 const emailSchema = z.string().email('Email không hợp lệ');
-const passwordSchema = z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự');
 const nameSchema = z.string().min(2, 'Tên phải có ít nhất 2 ký tự');
 const phoneSchema = z.string().regex(/^[0-9]{10}$/, 'Số điện thoại phải có 10 chữ số');
 const idCardSchema = z.string().regex(/^[0-9]{9,12}$/, 'CMND/CCCD phải có 9-12 chữ số');
@@ -22,14 +21,11 @@ const FieldOwnerRegistration = () => {
   const { toast } = useToast();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   
   // Form fields
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [phone, setPhone] = useState('');  
   const [businessLicenseImage, setBusinessLicenseImage] = useState<string | null>(null);
   const [idCardNumber, setIdCardNumber] = useState('');
   const [businessName, setBusinessName] = useState('');
@@ -40,17 +36,7 @@ const FieldOwnerRegistration = () => {
       nameSchema.parse(fullName);
       emailSchema.parse(email);
       phoneSchema.parse(phone);
-      passwordSchema.parse(password);
       idCardSchema.parse(idCardNumber);
-      
-      if (password !== confirmPassword) {
-        toast({
-          title: 'Lỗi',
-          description: 'Mật khẩu xác nhận không khớp',
-          variant: 'destructive',
-        });
-        return false;
-      }
 
       if (!businessName.trim()) {
         toast({
@@ -112,8 +98,6 @@ const FieldOwnerRegistration = () => {
         full_name: fullName,
         name: fullName,
         email,
-        password,
-        password_confirmation: confirmPassword,
         phone,
         image_code: businessLicenseUrl,
         code_id: idCardNumber,
@@ -271,46 +255,6 @@ const FieldOwnerRegistration = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Mật khẩu <span className="text-destructive">*</span></Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="password"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10 pr-10"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="confirmPassword">Xác nhận mật khẩu <span className="text-destructive">*</span></Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="confirmPassword"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="pl-10"
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* Thông tin doanh nghiệp */}

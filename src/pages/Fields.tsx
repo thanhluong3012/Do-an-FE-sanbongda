@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
@@ -11,28 +11,28 @@ import { MapPin, Search, Clock, Building2, Image as ImageIcon } from 'lucide-rea
 import { fieldComplexService, FieldComplex } from '@/services/fieldComplexService';
 import { useToast } from '@/hooks/use-toast';
 
-const districts = [
-  'Quận 1', 'Quận 2', 'Quận 3', 'Quận 4', 'Quận 5', 
-  'Quận 6', 'Quận 7', 'Quận 8', 'Quận 9', 'Quận 10',
-  'Quận 11', 'Quận 12', 'Bình Thạnh', 'Tân Bình', 'Phú Nhuận'
-];
-
-// No static fallback data — rely on API and show errors when it fails
-
 const Fields = () => {
+  const { toast } = useToast();
   const [fieldComplexes, setFieldComplexes] = useState<FieldComplex[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDistrict, setFilterDistrict] = useState('all');
   const [filterType, setFilterType] = useState('all');
-  
-  let toast: any;
-  try {
-    toast = useToast().toast;
-  } catch (e) {
-    console.error('Toast error:', e);
-    toast = () => {}; // fallback
-  }
+
+  // Lấy danh sách district và field type động từ data thực
+  const districts = useMemo(() => {
+    const set = new Set<string>();
+    fieldComplexes.forEach((c) => { if (c.district) set.add(c.district); });
+    return Array.from(set).sort();
+  }, [fieldComplexes]);
+
+  const fieldTypes = useMemo(() => {
+    const set = new Set<string>();
+    fieldComplexes.forEach((c) => {
+      c.fields?.forEach((f) => { if (f.field_type) set.add(f.field_type); });
+    });
+    return Array.from(set).sort();
+  }, [fieldComplexes]);
 
   // Load field complexes từ API
   useEffect(() => {
@@ -43,32 +43,15 @@ const Fields = () => {
     try {
       setLoading(true);
       const data = await fieldComplexService.getAll();
-      console.log('🔍 RAW API Response:', data);
-      console.log('🔍 Number of complexes:', data?.length);
-      if (data && data.length > 0) {
-        // Log từng cụm sân để debug
-        data.forEach((complex: any, index: number) => {
-          console.log(`Complex ${index + 1}:`, {
-            name: complex.name,
-            status: complex.status,
-            district: complex.district,
-            fields: complex.fields?.length || 0
-          });
-        });
-        setFieldComplexes(data);
-      } else {
-        setFieldComplexes([]);
-      }
+      setFieldComplexes(Array.isArray(data) ? data : []);
     } catch (error: any) {
       console.error('Error loading field complexes:', error);
       setFieldComplexes([]);
-      if (toast) {
-        toast({
-          title: 'Lỗi',
-          description: 'Không thể tải danh sách cụm sân. Vui lòng thử lại sau.',
-          variant: 'destructive',
-        });
-      }
+      toast({
+        title: 'Lỗi',
+        description: 'Không thể tải danh sách cụm sân. Vui lòng thử lại sau.',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
@@ -76,40 +59,22 @@ const Fields = () => {
 
   const filteredComplexes = fieldComplexes.filter((complex) => {
     if (!complex) return false;
-    
-    const matchesSearch = (complex.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-                         (complex.address?.toLowerCase() || '').includes(searchQuery.toLowerCase());
-    const matchesDistrict = filterDistrict === 'all' || complex.district === filterDistrict;
-    
-    // Lọc theo loại sân (kiểm tra xem có sân con nào match không)
-    const matchesType = filterType === 'all' || 
-                       (complex.fields && complex.fields.some(sf => sf?.field_type === filterType));
-    
-    // NỚI LỎNG: Cho phép hiển thị tất cả status (không filter status nữa)
-    // Vì backend có thể không trả về status hoặc có giá trị khác
-    const isActive = true; // Tạm thời bỏ filter status
-    
-    const result = matchesSearch && matchesDistrict && matchesType && isActive;
-    
-    // Debug log CHI TIẾT
-    console.log(`🔍 Checking complex "${complex.name}":`, {
-      matchesSearch,
-      matchesDistrict,
-      matchesType,
-      isActive,
-      PASSED: result,
-      rawData: {
-        status: complex.status,
-        district: complex.district,
-        fieldsCount: complex.fields?.length || 0
-      }
-    });
-    
-    return result;
+
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = !q ||
+      (complex.name?.toLowerCase() || '').includes(q) ||
+      (complex.address?.toLowerCase() || '').includes(q) ||
+      (complex.district?.toLowerCase() || '').includes(q) ||
+      (complex.city?.toLowerCase() || '').includes(q);
+
+    const matchesDistrict = filterDistrict === 'all' ||
+      (complex.district?.trim() === filterDistrict.trim());
+
+    const matchesType = filterType === 'all' ||
+      (complex.fields?.some((sf) => sf?.field_type === filterType) ?? false);
+
+    return matchesSearch && matchesDistrict && matchesType;
   });
-  
-  console.log('📊 Total complexes from API:', fieldComplexes.length);
-  console.log('✅ Filtered complexes shown:', filteredComplexes.length);
 
   return (
     <div className="min-h-screen bg-background">
@@ -147,40 +112,6 @@ const Fields = () => {
                       className="pl-10"
                     />
                   </div>
-                </div>
-
-                {/* District */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Quận/Huyện</label>
-                  <Select value={filterDistrict} onValueChange={setFilterDistrict}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn quận" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tất cả</SelectItem>
-                      {districts.map((district) => (
-                        <SelectItem key={district} value={district}>
-                          {district}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Type */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Loại sân</label>
-                  <Select value={filterType} onValueChange={setFilterType}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn loại sân" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tất cả</SelectItem>
-                      <SelectItem value="5v5">Sân 5 người</SelectItem>
-                      <SelectItem value="7v7">Sân 7 người</SelectItem>
-                      <SelectItem value="11v11">Sân 11 người</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
 
                 {/* Reset */}

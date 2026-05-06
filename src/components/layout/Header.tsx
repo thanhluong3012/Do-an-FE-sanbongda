@@ -161,7 +161,7 @@ const Header = () => {
                   </Link>
                 </Button>
                 <Button variant="default" size="sm" asChild>
-                  <Link to="/auth">Đăng ký</Link>
+                  <Link to="/auth?tab=register">Đăng ký</Link>
                 </Button>
               </>
             )}
@@ -232,7 +232,7 @@ const Header = () => {
                       </Link>
                     </Button>
                     <Button className="flex-1" asChild>
-                      <Link to="/auth" onClick={() => setIsMenuOpen(false)}>
+                      <Link to="/auth?tab=register" onClick={() => setIsMenuOpen(false)}>
                         Đăng ký
                       </Link>
                     </Button>

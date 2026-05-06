@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, MailCheck } from 'lucide-react';
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Email không hợp lệ');
@@ -16,11 +16,14 @@ const nameSchema = z.string().min(2, 'Tên phải có ít nhất 2 ký tự');
 
 const Auth = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, signIn, signUp, loading } = useAuth();
   const { toast } = useToast();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') === 'register' ? 'register' : 'login');
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
   
   // Login form
   const [loginEmail, setLoginEmail] = useState('');
@@ -114,10 +117,8 @@ const Auth = () => {
         variant: 'destructive',
       });
     } else {
-      toast({
-        title: 'Thành công',
-        description: 'Đăng ký thành công! Vui lòng đăng nhập.',
-      });
+      // Lưu email để hiển thị màn hình xác nhận
+      setRegisteredEmail(registerEmail);
       // Reset form
       setRegisterName('');
       setRegisterEmail('');
@@ -144,14 +145,40 @@ const Auth = () => {
               <span className="text-primary-foreground font-bold text-2xl">⚽</span>
             </div>
             <span className="font-display font-bold text-2xl text-foreground">
-              SânBóng<span className="text-primary">Pro</span>
+              TM<span className="text-primary">ARENA</span>
             </span>
           </a>
           <p className="text-muted-foreground mt-2">Đặt sân bóng đá dễ dàng</p>
         </div>
 
         <Card variant="elevated" className="border-0 shadow-xl">
-          <Tabs defaultValue="login" className="w-full">
+          {registeredEmail ? (
+            <CardContent className="py-10 text-center space-y-5">
+              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+                <MailCheck className="w-8 h-8 text-green-600" />
+              </div>
+              <div>
+                <CardTitle className="text-xl mb-2">Kiểm tra email của bạn</CardTitle>
+                <p className="text-muted-foreground text-sm">
+                  Chúng tôi đã gửi email xác nhận tới
+                </p>
+                <p className="font-semibold mt-1">{registeredEmail}</p>
+              </div>
+              <div className="bg-muted rounded-lg p-4 text-sm text-muted-foreground text-left space-y-2">
+                <p>• Mở email và nhấp vào link xác nhận</p>
+                <p>• Link có hiệu lực trong <strong>24 giờ</strong></p>
+                <p>• Kiểm tra mục Spam nếu không thấy email</p>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => { setRegisteredEmail(null); setActiveTab('login'); }}
+              >
+                Quay lại đăng nhập
+              </Button>
+            </CardContent>
+          ) : (
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-4">
               <TabsTrigger value="login">Đăng nhập</TabsTrigger>
               <TabsTrigger value="register">Đăng ký</TabsTrigger>
@@ -269,9 +296,6 @@ const Auth = () => {
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Tối thiểu 8 ký tự
-                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="register-confirm-password">Xác nhận mật khẩu</Label>
@@ -306,8 +330,8 @@ const Auth = () => {
               </CardContent>
             </TabsContent>
           </Tabs>
+          )}
         </Card>
-
         <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground mt-6">
           <a href="/" className="hover:text-primary transition-colors">
             ← Quay về trang chủ

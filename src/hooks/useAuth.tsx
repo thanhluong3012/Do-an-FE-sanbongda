@@ -125,17 +125,26 @@ const signUp = async (email: string, password: string, fullName: string, passwor
   } catch (error: any) {
     console.error('❌ Registration failed:', error.response?.data);
     
-    // Xử lý error messages cụ thể
     let errorMessage = 'Đăng ký thất bại';
     
     if (error.response?.status === 422) {
-      // Validation error
       const errors = error.response?.data?.errors;
       if (errors) {
-        // Lấy error message đầu tiên
-        const firstError = Object.values(errors)[0];
-        if (Array.isArray(firstError)) {
-          errorMessage = firstError[0] as string;
+        // Ưu tiên các field theo thứ tự: name → email → password
+        const fieldOrder = ['name', 'email', 'password', 'password_confirmation'];
+        let found = false;
+        for (const field of fieldOrder) {
+          if (errors[field]) {
+            const msg = Array.isArray(errors[field]) ? errors[field][0] : errors[field];
+            errorMessage = msg;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          // Lấy lỗi đầu tiên bất kỳ
+          const firstError = Object.values(errors)[0];
+          errorMessage = Array.isArray(firstError) ? (firstError[0] as string) : String(firstError);
         }
       } else {
         errorMessage = error.response?.data?.message || 'Dữ liệu không hợp lệ';
@@ -210,18 +219,41 @@ const signUp = async (email: string, password: string, fullName: string, passwor
     } catch (error: any) {
       console.error('❌ Login failed:', error.response?.data || error.message);
       
-      // Xử lý error messages cụ thể
       let errorMessage = 'Đăng nhập thất bại';
       
       if (error.response?.status === 401) {
-        errorMessage = error.response?.data?.message || 'Email hoặc mật khẩu không đúng';
+        errorMessage = 'Email hoặc mật khẩu không chính xác';
+      } else if (error.response?.status === 403) {
+        // Backend trả về: { message: "Login failed", errors: "Tài khoản đã bị khóa..." }
+        // Lỗi thật nằm trong `errors` (string), không phải `message`
+        const errorsField = error.response?.data?.errors;
+        const serverMsg = typeof errorsField === 'string'
+          ? errorsField
+          : (error.response?.data?.message || '');
+
+        if (serverMsg.toLowerCase().includes('khóa') || serverMsg.toLowerCase().includes('lock')) {
+          errorMessage = 'Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên để được hỗ trợ.';
+        } else if (serverMsg.toLowerCase().includes('xác nhận') || serverMsg.toLowerCase().includes('verify')) {
+          errorMessage = 'Tài khoản chưa xác nhận email. Vui lòng kiểm tra hộp thư và nhấn link xác nhận.';
+        } else {
+          errorMessage = serverMsg || 'Truy cập bị từ chối. Vui lòng liên hệ quản trị viên.';
+        }
       } else if (error.response?.status === 422) {
-        // Validation error
         const errors = error.response?.data?.errors;
         if (errors) {
-          const firstError = Object.values(errors)[0];
-          if (Array.isArray(firstError)) {
-            errorMessage = firstError[0] as string;
+          const fieldOrder = ['email', 'password'];
+          let found = false;
+          for (const field of fieldOrder) {
+            if (errors[field]) {
+              const msg = Array.isArray(errors[field]) ? errors[field][0] : errors[field];
+              errorMessage = msg;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            const firstError = Object.values(errors)[0];
+            errorMessage = Array.isArray(firstError) ? (firstError[0] as string) : String(firstError);
           }
         } else {
           errorMessage = error.response?.data?.message || 'Dữ liệu không hợp lệ';
@@ -229,7 +261,6 @@ const signUp = async (email: string, password: string, fullName: string, passwor
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       } else if (error.message && !error.response) {
-        // Network error hoặc error từ logic trên
         errorMessage = error.message;
       }
       

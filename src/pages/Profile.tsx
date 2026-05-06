@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth, ROLES } from '@/hooks/useAuth';
-import RoleBasedLayout from '@/components/layout/RoleBasedLayout';
+import Header from '@/components/layout/Header';
+import Footer from '@/components/layout/Footer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -186,16 +187,20 @@ export default function Profile() {
 
   if (loading) {
     return (
-      <RoleBasedLayout>
-        <div className="flex items-center justify-center min-h-[400px]">
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-1 flex items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      </RoleBasedLayout>
+        </main>
+        <Footer />
+      </div>
     );
   }
 
   return (
-    <RoleBasedLayout>
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-1">
       <div className="container mx-auto p-6 max-w-4xl">
         <h1 className="text-3xl font-bold mb-6">Thông Tin Cá Nhân</h1>
 
@@ -376,6 +381,8 @@ export default function Profile() {
           </div>
         </form>
       </div>
-    </RoleBasedLayout>
+      </main>
+      <Footer />
+    </div>
   );
 }
