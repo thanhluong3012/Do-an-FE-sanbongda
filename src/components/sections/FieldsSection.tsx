@@ -62,7 +62,7 @@ const FieldsSection = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {complexes.map((complex, index) => (
-              <Link to={`/fields/${complex.id}`} key={complex.id}>
+              <Link to={`/field-complex/${complex.id}`} key={complex.id}>
                 <Card
                   variant="field"
                   className="group animate-fade-in cursor-pointer hover:shadow-xl transition-shadow h-full flex flex-col"

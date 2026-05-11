@@ -14,9 +14,12 @@ import {
   Clock,
   DollarSign,
   Settings,
-  Loader2
+  Loader2,
+  Upload,
+  X
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { uploadImage } from '@/lib/storage';
 import {
   fieldComplexService,
   type FieldComplex,
@@ -75,6 +78,8 @@ const OwnerFields = () => {
     type: '', 
     id: 0 
   });
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string>('');
   
   // Form states
   const [editingCluster, setEditingCluster] = useState<FieldComplex | null>(null);
@@ -95,6 +100,7 @@ const OwnerFields = () => {
     open_time: '06:00',
     close_time: '23:00',
     status: 'active',
+    image: '',
   });
   
   // Field form
@@ -144,6 +150,7 @@ const OwnerFields = () => {
     try {
       // Load fields
       const fields = await fieldComplexService.getFieldsByClusterId(clusterId);
+      console.log('getFieldsByClusterId response:', fields);
       setClusterFields(prev => ({ ...prev, [clusterId]: Array.isArray(fields) ? fields : [] }));
       
       // Load hourly prices
@@ -189,7 +196,9 @@ const OwnerFields = () => {
         open_time: cluster.open_time?.substring(0, 5) || '06:00',
         close_time: cluster.close_time?.substring(0, 5) || '23:00',
         status: cluster.status || 'active',
+        image: cluster.image || '',
       });
+      setImagePreview(cluster.image || '');
     } else {
       setEditingCluster(null);
       setClusterForm({
@@ -203,7 +212,9 @@ const OwnerFields = () => {
         open_time: '06:00',
         close_time: '23:00',
         status: 'active',
+        image: '',
       });
+      setImagePreview('');
     }
     setClusterDialog(true);
   };
@@ -1135,6 +1146,61 @@ const OwnerFields = () => {
                   placeholder="Mô tả về cụm sân..."
                   rows={3}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Ảnh cụm sân</Label>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={imageUploading}
+                    onClick={() => document.getElementById('cluster-image-input')?.click()}
+                    className="flex items-center gap-2"
+                  >
+                    {imageUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    {imageUploading ? 'Đang tải...' : 'Chọn ảnh'}
+                  </Button>
+                  {imagePreview && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => { setImagePreview(''); setClusterForm({ ...clusterForm, image: '' }); }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <input
+                    id="cluster-image-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setImageUploading(true);
+                      try {
+                        const url = await uploadImage(file, 'image', 'field-clusters');
+                        setClusterForm({ ...clusterForm, image: url });
+                        setImagePreview(url);
+                        toast({ title: 'Thành công', description: 'Đã tải ảnh lên' });
+                      } catch (err: any) {
+                        toast({ title: 'Lỗi', description: err.message || 'Tải ảnh thất bại', variant: 'destructive' });
+                      } finally {
+                        setImageUploading(false);
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+                </div>
+                {imagePreview && (
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    className="mt-2 h-36 w-full object-cover rounded-lg border"
+                  />
+                )}
               </div>
             </div>
             <DialogFooter>

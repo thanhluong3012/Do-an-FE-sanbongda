@@ -1,18 +1,20 @@
 import RoleBasedLayout from '@/components/layout/RoleBasedLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MapPin, Calendar, DollarSign, Users, TrendingUp } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { 
+  DollarSign, TrendingUp, Clock, CheckCircle2, XCircle, 
+  CreditCard, Wallet, Trophy, Calendar, Loader2, RefreshCw,
+  BarChart3, MapPin
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { paymentService, PaymentStatistics } from '@/services/paymentService';
+import { Button } from '@/components/ui/button';
 
 const OwnerDashboard = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalFields: 0,
-    todayBookings: 0,
-    monthRevenue: 0,
-    totalStaff: 0,
-  });
+  const [stats, setStats] = useState<PaymentStatistics | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -21,22 +23,13 @@ const OwnerDashboard = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      
-      // TODO: Implement API calls khi backend có endpoint statistics
-      // const response = await api.get('/owner/statistics');
-      
-      // Demo data - replace with real API
-      setStats({
-        totalFields: 8,
-        todayBookings: 12,
-        monthRevenue: 45500000,
-        totalStaff: 5,
-      });
+      const data = await paymentService.getPaymentStatistics();
+      setStats(data);
     } catch (error: any) {
       console.error('Error fetching dashboard data:', error);
       toast({
         title: 'Lỗi',
-        description: 'Không thể tải dữ liệu dashboard',
+        description: 'Không thể tải dữ liệu thống kê',
         variant: 'destructive',
       });
     } finally {
@@ -44,156 +37,305 @@ const OwnerDashboard = () => {
     }
   };
 
-  const statsCards = [
-    {
-      title: 'Sân Của Tôi',
-      value: stats.totalFields,
-      icon: MapPin,
-      color: 'text-green-600',
-      bgColor: 'bg-green-100',
-      description: 'Tổng số sân đang quản lý',
-      link: '/owner/fields',
-    },
-    {
-      title: 'Booking Hôm Nay',
-      value: stats.todayBookings,
-      icon: Calendar,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-100',
-      description: 'Lượt đặt sân hôm nay',
-      link: '/owner/bookings',
-    },
-    {
-      title: 'Doanh Thu Tháng',
-      value: `${(stats.monthRevenue / 1000000).toFixed(1)}M ₫`,
-      icon: DollarSign,
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-100',
-      description: 'Tổng doanh thu tháng này',
-      link: '/owner/revenue',
-    },
-    {
-      title: 'Nhân Viên',
-      value: stats.totalStaff,
-      icon: Users,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-100',
-      description: 'Tổng số nhân viên',
-      link: '/owner/staff',
-    },
-  ];
+  const formatCurrency = (amount: number | string) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+    }).format(num);
+  };
 
-  const quickActions = [
-    {
-      title: 'Quản Lý Sân',
-      description: 'Thêm, sửa, xóa sân bóng',
-      icon: MapPin,
-      color: 'text-green-600',
-      bgColor: 'bg-green-100',
-      link: '/owner/fields',
-    },
-    {
-      title: 'Quản Lý Booking',
-      description: 'Xem và quản lý đặt sân',
-      icon: Calendar,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-100',
-      link: '/owner/bookings',
-    },
-    {
-      title: 'Quản Lý Nhân Viên',
-      description: 'Quản lý danh sách nhân viên',
-      icon: Users,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-100',
-      link: '/owner/staff',
-    },
-    {
-      title: 'Thống Kê Doanh Thu',
-      description: 'Xem báo cáo và thống kê',
-      icon: TrendingUp,
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-100',
-      link: '/owner/revenue',
-    },
-  ];
+  const formatNumber = (num: number) => {
+    return new Intl.NumberFormat('vi-VN').format(num);
+  };
 
   if (loading) {
     return (
       <RoleBasedLayout>
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <div className="flex items-center justify-center h-96">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       </RoleBasedLayout>
     );
   }
 
+  if (!stats) {
+    return (
+      <RoleBasedLayout>
+        <div className="text-center py-12">
+          <p className="text-muted-foreground mb-4">Không thể tải dữ liệu thống kê</p>
+          <Button onClick={fetchDashboardData} variant="outline" className="gap-2">
+            <RefreshCw className="w-4 h-4" />
+            Thử lại
+          </Button>
+        </div>
+      </RoleBasedLayout>
+    );
+  }
+
+  const totalRevenue = typeof stats.total_revenue === 'string' 
+    ? parseFloat(stats.total_revenue) 
+    : stats.total_revenue;
+
   return (
     <RoleBasedLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard Chủ Sân</h1>
-          <p className="text-gray-500 mt-1">Quản lý sân bóng và nhân viên của bạn</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard Doanh Thu</h1>
+            <p className="text-gray-500 mt-1">Thống kê và quản lý thanh toán</p>
+          </div>
+          <Button onClick={fetchDashboardData} variant="outline" className="gap-2">
+            <RefreshCw className="w-4 h-4" />
+            Làm mới
+          </Button>
         </div>
 
-        {/* Stats Grid */}
+        {/* Overview Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {statsCards.map((stat, index) => {
-            const Icon = stat.icon;
-            
-            return (
-              <a
-                key={index}
-                href={stat.link}
-                className="block"
-              >
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">
-                      {stat.title}
-                    </CardTitle>
-                    <div className={`p-2 rounded-lg ${stat.bgColor}`}>
-                      <Icon className={`w-5 h-5 ${stat.color}`} />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-                    <p className="text-xs text-gray-500 mt-1">{stat.description}</p>
-                  </CardContent>
-                </Card>
-              </a>
-            );
-          })}
+          {/* Total Revenue */}
+          <Card className="border-l-4 border-l-green-500">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                <DollarSign className="w-4 h-4" />
+                Tổng Doanh Thu
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                {formatCurrency(totalRevenue)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Từ {stats.paid} booking đã thanh toán
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Total Bookings */}
+          <Card className="border-l-4 border-l-blue-500">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
+                Tổng Booking
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">
+                {formatNumber(stats.total_bookings)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Tất cả các lượt đặt sân
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Pending Payment */}
+          <Card className="border-l-4 border-l-yellow-500">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Chờ Thanh Toán
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-600">
+                {formatNumber(stats.pending_payment)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {stats.pending_with_bill} đã có chứng từ
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Failed Payment */}
+          <Card className="border-l-4 border-l-red-500">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                <XCircle className="w-4 h-4" />
+                Thanh Toán Thất Bại
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">
+                {formatNumber(stats.failed)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Booking bị từ chối/lỗi
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Quick Actions */}
+        {/* Payment Method & Booking Type */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Payment Methods */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="w-5 h-5" />
+                Phương Thức Thanh Toán
+              </CardTitle>
+              <CardDescription>Phân loại theo hình thức thanh toán</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <CreditCard className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Chuyển khoản</p>
+                    <p className="text-sm text-muted-foreground">Transfer</p>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="text-lg px-4 py-1">
+                  {formatNumber(stats.by_payment_method.transfer)}
+                </Badge>
+              </div>
+              
+              <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <Wallet className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Tiền mặt</p>
+                    <p className="text-sm text-muted-foreground">Cash</p>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="text-lg px-4 py-1">
+                  {formatNumber(stats.by_payment_method.cash)}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Booking Types */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                Loại Booking
+              </CardTitle>
+              <CardDescription>Phân loại theo loại đặt sân</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-purple-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <Trophy className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Giải đấu</p>
+                    <p className="text-sm text-green-600 font-semibold">
+                      {formatCurrency(stats.by_booking_type.tournament.revenue)}
+                    </p>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="text-lg px-4 py-1">
+                  {formatNumber(stats.by_booking_type.tournament.total_bookings)}
+                </Badge>
+              </div>
+              
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gray-100 rounded-lg">
+                    <Calendar className="w-5 h-5 text-gray-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Đặt sân thường</p>
+                    <p className="text-sm text-green-600 font-semibold">
+                      {formatCurrency(stats.by_booking_type.regular.revenue)}
+                    </p>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="text-lg px-4 py-1">
+                  {formatNumber(stats.by_booking_type.regular.total_bookings)}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Field Statistics */}
         <Card>
           <CardHeader>
-            <CardTitle>Quản Lý Nhanh</CardTitle>
-            <CardDescription>
-              Truy cập nhanh các chức năng chính
-            </CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <MapPin className="w-5 h-5" />
+              Thống Kê Theo Sân
+            </CardTitle>
+            <CardDescription>Doanh thu và booking từng sân bóng</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {quickActions.map((action, index) => {
-                const Icon = action.icon;
-                
-                return (
-                  <a
-                    key={index}
-                    href={action.link}
-                    className="p-4 border border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all group"
-                  >
-                    <div className={`p-2 ${action.bgColor} rounded-lg w-fit mb-3 group-hover:scale-110 transition-transform`}>
-                      <Icon className={`w-6 h-6 ${action.color}`} />
-                    </div>
-                    <h3 className="font-semibold text-gray-900 mb-1">{action.title}</h3>
-                    <p className="text-sm text-gray-500">{action.description}</p>
-                  </a>
-                );
-              })}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-muted/50 border-b">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Sân</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Tổng Booking</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Đã Thanh Toán</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">Chờ Xử Lý</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Doanh Thu</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Chờ Thu</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {stats.by_field.map((field) => (
+                    <tr key={field.field_id} className="hover:bg-muted/30">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-primary" />
+                          <span className="font-medium">
+                            {field.field_name || `Sân #${field.field_id}`}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge variant="outline">{formatNumber(field.total_bookings)}</Badge>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge className="bg-green-100 text-green-800">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          {formatNumber(field.paid_count)}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge className="bg-yellow-100 text-yellow-800">
+                          <Clock className="w-3 h-3 mr-1" />
+                          {formatNumber(field.pending_count)}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-green-600">
+                        {formatCurrency(field.revenue)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-muted-foreground">
+                        {formatCurrency(field.pending_revenue)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-muted/50 border-t-2 font-bold">
+                  <tr>
+                    <td className="px-4 py-3">TỔNG CỘNG</td>
+                    <td className="px-4 py-3 text-center">
+                      {formatNumber(stats.total_bookings)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {formatNumber(stats.paid)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {formatNumber(stats.pending_payment)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-green-600">
+                      {formatCurrency(totalRevenue)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-yellow-600">
+                      {formatCurrency(stats.pending_revenue)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </CardContent>
         </Card>
@@ -203,4 +345,3 @@ const OwnerDashboard = () => {
 };
 
 export default OwnerDashboard;
-

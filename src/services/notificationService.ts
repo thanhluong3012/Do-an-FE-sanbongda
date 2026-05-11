@@ -11,6 +11,7 @@ export interface Notification {
     team_id?: number;
     team_name?: string;
     registration_id?: number;
+    booking_id?: number;
     status?: string;
     reason?: string;
     [key: string]: any;

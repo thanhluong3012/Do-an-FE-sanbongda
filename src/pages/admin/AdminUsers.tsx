@@ -71,6 +71,11 @@ const AdminUsers = () => {
   const [lockDialogOpen, setLockDialogOpen] = useState(false);
   const [userToLock, setUserToLock] = useState<{ id: number; name: string; isActive: boolean } | null>(null);
 
+  // State cho dialog thêm user
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addForm, setAddForm] = useState({ name: '', email: '', password: '', role_id: 4 });
+  const [isAdding, setIsAdding] = useState(false);
+
   // Call API user
   const fetchUsser = async () => {
     try {
@@ -257,6 +262,37 @@ const AdminUsers = () => {
     }
   };
 
+  // Hàm tạo user mới
+  const confirmCreateUser = async () => {
+    if (!addForm.name || !addForm.email || !addForm.password) {
+      toast({
+        title: 'Lỗi',
+        description: 'Vui lòng điền đầy đủ tên, email và mật khẩu',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIsAdding(true);
+    try {
+      await api.post('/users', addForm);
+      toast({
+        title: 'Thành công',
+        description: `Đã tạo user "${addForm.name}" thành công`,
+      });
+      setAddDialogOpen(false);
+      setAddForm({ name: '', email: '', password: '', role_id: 4 });
+      fetchUsser();
+    } catch (err: any) {
+      toast({
+        title: 'Lỗi',
+        description: err.response?.data?.message || 'Tạo user thất bại',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
   const getRoleBadge = (roleName: string) => {
     // Lấy màu badge dựa trên name_role từ API (Admin=1, Owner=2, Staff=3, Member=4)
     const roleConfig: { [key: string]: { className: string; label: string } } = {
@@ -307,7 +343,7 @@ const AdminUsers = () => {
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Tải lại'}
             </Button>
-            <Button className="flex items-center gap-2">
+            <Button className="flex items-center gap-2" onClick={() => setAddDialogOpen(true)}>
               <Plus className="h-4 w-4" />
               Thêm User
             </Button>
@@ -579,6 +615,72 @@ const AdminUsers = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Dialog thêm user */}
+        <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Thêm User mới</DialogTitle>
+              <DialogDescription>
+                Điền thông tin để tạo tài khoản người dùng mới.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="add-name">Tên <span className="text-red-500">*</span></Label>
+                <Input
+                  id="add-name"
+                  value={addForm.name}
+                  onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
+                  placeholder="Nhập tên..."
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="add-email">Email <span className="text-red-500">*</span></Label>
+                <Input
+                  id="add-email"
+                  type="email"
+                  value={addForm.email}
+                  onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
+                  placeholder="Nhập email..."
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="add-password">Mật khẩu <span className="text-red-500">*</span></Label>
+                <Input
+                  id="add-password"
+                  type="password"
+                  value={addForm.password}
+                  onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
+                  placeholder="Nhập mật khẩu..."
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Vai trò</Label>
+                <Select value={addForm.role_id.toString()} onValueChange={(value) => setAddForm({ ...addForm, role_id: parseInt(value) })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn vai trò" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="4">Thành viên</SelectItem>
+                    <SelectItem value="3">Nhân viên</SelectItem>
+                    <SelectItem value="2">Chủ sân</SelectItem>
+                    <SelectItem value="1">Quản trị viên</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAddDialogOpen(false)} disabled={isAdding}>
+                Hủy
+              </Button>
+              <Button onClick={confirmCreateUser} disabled={isAdding}>
+                {isAdding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Tạo user
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Dialog xác nhận xóa */}
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

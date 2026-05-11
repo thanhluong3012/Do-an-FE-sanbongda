@@ -26,6 +26,14 @@ export interface CreateStaffData {
   salary?: number;
 }
 
+export interface CreateStaffWithUserData {
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+  code_id: string;
+}
+
 // Lấy danh sách staffs (Admin, Owner)
 export const getStaffs = async () => {
   const response = await api.get('/staffs');
@@ -38,7 +46,13 @@ export const getStaff = async (id: number) => {
   return response.data;
 };
 
-// Tạo staff mới
+// Tạo staff mới kèm tạo tài khoản user
+export const createStaffWithUser = async (data: CreateStaffWithUserData) => {
+  const response = await api.post('/staffs', data);
+  return response.data;
+};
+
+// Tạo staff mới (dùng user_id có sẵn)
 export const createStaff = async (data: CreateStaffData) => {
   const response = await api.post('/staffs', data);
   return response.data;

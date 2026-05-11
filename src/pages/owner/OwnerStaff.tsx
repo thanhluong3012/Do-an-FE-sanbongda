@@ -1,10 +1,9 @@
 import RoleBasedLayout from '@/components/layout/RoleBasedLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { getStaffs, createStaff, updateStaff, deleteStaff } from '@/services/staffService';
+import { getStaffs, createStaffWithUser, updateStaff, deleteStaff } from '@/services/staffService';
 import {
   Dialog,
   DialogContent,
@@ -15,14 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { UserPlus, Mail, Search, Edit, Trash2, UserCog, Loader2, AlertCircle } from 'lucide-react';
+import { UserPlus, Mail, Phone, Search, Edit, Trash2, UserCog, Loader2, AlertCircle, Lock, CreditCard } from 'lucide-react';
 
 interface Staff {
   id: number;
@@ -48,12 +40,13 @@ const OwnerStaff = () => {
   
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPosition, setSelectedPosition] = useState<string>('all');
-  
+
   const [formData, setFormData] = useState({
-    user_id: 0,
-    position: '',
-    salary: '',
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    code_id: '',
   });
 
   useEffect(() => {
@@ -90,37 +83,60 @@ const OwnerStaff = () => {
     if (staffMember) {
       setEditingStaff(staffMember);
       setFormData({
-        user_id: staffMember.user_id,
-        position: staffMember.position || '',
-        salary: staffMember.salary?.toString() || '',
+        name: staffMember.user?.name || '',
+        email: staffMember.user?.email || '',
+        phone: '',
+        password: '',
+        code_id: '',
       });
     } else {
       setEditingStaff(null);
       setFormData({
-        user_id: 0,
-        position: '',
-        salary: '',
+        name: '',
+        email: '',
+        phone: '',
+        password: '',
+        code_id: '',
       });
     }
     setDialogOpen(true);
   };
 
   const handleSubmit = async () => {
-    try {
-      const submitData = {
-        user_id: formData.user_id,
-        position: formData.position || undefined,
-        salary: formData.salary ? parseFloat(formData.salary) : undefined,
-      };
+    if (!editingStaff) {
+      if (!formData.name.trim() || !formData.email.trim() || !formData.phone.trim() || !formData.password.trim() || !formData.code_id.trim()) {
+        toast({
+          title: 'Thiếu thông tin',
+          description: 'Vui lòng điền đầy đủ tên, email, số điện thoại, mật khẩu và CCCD.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
 
+    try {
       if (editingStaff) {
-        await updateStaff(editingStaff.id, submitData);
+        const updateData: any = {
+          name: formData.name.trim() || undefined,
+          email: formData.email.trim() || undefined,
+          phone: formData.phone.trim() || undefined,
+        };
+        if (formData.password.trim()) {
+          updateData.password = formData.password;
+        }
+        await updateStaff(editingStaff.id, updateData);
         toast({
           title: 'Thành công',
           description: 'Đã cập nhật thông tin nhân viên',
         });
       } else {
-        await createStaff(submitData as any);
+        await createStaffWithUser({
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
+          password: formData.password,
+          code_id: formData.code_id.trim(),
+        });
         toast({
           title: 'Thành công',
           description: 'Đã thêm nhân viên mới',
@@ -164,20 +180,13 @@ const OwnerStaff = () => {
     }
   };
 
-  // Lọc staff theo search và position
+  // Lọc staff theo search
   const filteredStaff = staff.filter((staffMember) => {
-    const matchesSearch = 
+    return (
       staffMember.user?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staffMember.user?.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staffMember.position?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesPosition = selectedPosition === 'all' || staffMember.position === selectedPosition;
-    
-    return matchesSearch && matchesPosition;
+      staffMember.user?.email?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
   });
-
-  // Lấy danh sách unique positions
-  const uniquePositions = Array.from(new Set(staff.map(s => s.position).filter(Boolean)));
 
   return (
     <RoleBasedLayout>
@@ -224,33 +233,18 @@ const OwnerStaff = () => {
           </Card>
         </div>
 
-        {/* Search and Filter */}
+        {/* Search */}
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Tìm kiếm theo tên, email hoặc chức vụ..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                  disabled={loading}
-                />
-              </div>
-              <Select value={selectedPosition} onValueChange={setSelectedPosition} disabled={loading}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Lọc theo chức vụ" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tất cả chức vụ</SelectItem>
-                  {uniquePositions.map((position) => (
-                    <SelectItem key={position} value={position || ''}>
-                      {position || 'Chưa có chức vụ'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Tìm kiếm theo tên hoặc email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+                disabled={loading}
+              />
             </div>
           </CardContent>
         </Card>
@@ -314,22 +308,13 @@ const OwnerStaff = () => {
                           <h3 className="text-lg font-semibold">
                             {staffMember.user?.name || 'N/A'}
                           </h3>
-                          <Badge className="bg-blue-100 text-blue-800">
-                            {staffMember.position || 'Nhân viên'}
-                          </Badge>
                         </div>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
+                        <div className="text-sm text-gray-600">
                           <div className="flex items-center gap-2">
                             <Mail className="w-4 h-4" />
                             <span>{staffMember.user?.email || 'N/A'}</span>
                           </div>
-                          {staffMember.salary && (
-                            <div className="flex items-center gap-2">
-                              <UserCog className="w-4 h-4" />
-                              <span>Lương: {staffMember.salary.toLocaleString('vi-VN')} VNĐ</span>
-                            </div>
-                          )}
                         </div>
                         
                         <p className="text-xs text-gray-400 mt-2">
@@ -373,63 +358,150 @@ const OwnerStaff = () => {
               </DialogTitle>
               <DialogDescription>
                 {editingStaff 
-                  ? 'Cập nhật thông tin nhân viên (chức vụ, lương)' 
-                  : 'Nhập ID user để thêm làm nhân viên. User phải tồn tại trong hệ thống.'
+                  ? 'Cập nhật thông tin nhân viên' 
+                  : 'Nhập thông tin để tạo tài khoản và thêm nhân viên mới vào hệ thống'
                 }
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              {!editingStaff && (
-                <div>
-                  <Label htmlFor="user_id">User ID</Label>
-                  <Input
-                    id="user_id"
-                    type="number"
-                    value={formData.user_id || ''}
-                    onChange={(e) => setFormData({ ...formData, user_id: parseInt(e.target.value) || 0 })}
-                    placeholder="Nhập ID của user"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    ID của user muốn thêm làm nhân viên
-                  </p>
-                </div>
+              {!editingStaff ? (
+                <>
+                  <div>
+                    <Label htmlFor="name">Họ và tên <span className="text-red-500">*</span></Label>
+                    <div className="relative mt-1">
+                      <UserCog className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder="Nguyễn Văn A"
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="email">Email <span className="text-red-500">*</span></Label>
+                    <div className="relative mt-1">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        id="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        placeholder="nhanvien@example.com"
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="phone">Số điện thoại <span className="text-red-500">*</span></Label>
+                    <div className="relative mt-1">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        id="phone"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        placeholder="0901234567"
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="password">Mật khẩu <span className="text-red-500">*</span></Label>
+                    <div className="relative mt-1">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        id="password"
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        placeholder="Nhập mật khẩu"
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="code_id">Căn cước công dân <span className="text-red-500">*</span></Label>
+                    <div className="relative mt-1">
+                      <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        id="code_id"
+                        value={formData.code_id}
+                        onChange={(e) => setFormData({ ...formData, code_id: e.target.value })}
+                        placeholder="012345678901"
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <Label htmlFor="edit-name">Họ và tên</Label>
+                    <div className="relative mt-1">
+                      <UserCog className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        id="edit-name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder="Nguyễn Văn A"
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-email">Email</Label>
+                    <div className="relative mt-1">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        id="edit-email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        placeholder="nhanvien@example.com"
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-phone">Số điện thoại</Label>
+                    <div className="relative mt-1">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        id="edit-phone"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        placeholder="0901234567"
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-password">Mật khẩu mới <span className="text-xs text-gray-400 font-normal">(để trống nếu không đổi)</span></Label>
+                    <div className="relative mt-1">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        id="edit-password"
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        placeholder="Để trống nếu không đổi"
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                </>
               )}
-              {editingStaff && (
-                <div>
-                  <Label>Nhân viên</Label>
-                  <Input
-                    value={editingStaff.user?.name || 'N/A'}
-                    disabled
-                    className="bg-gray-50"
-                  />
-                </div>
-              )}
-              <div>
-                <Label htmlFor="position">Chức vụ</Label>
-                <Input
-                  id="position"
-                  value={formData.position}
-                  onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                  placeholder="VD: Quản lý sân, Thu ngân..."
-                />
-              </div>
-              <div>
-                <Label htmlFor="salary">Lương (VNĐ)</Label>
-                <Input
-                  id="salary"
-                  type="number"
-                  value={formData.salary}
-                  onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
-                  placeholder="Nhập mức lương"
-                />
-              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogOpen(false)}>
                 Hủy
               </Button>
-              <Button onClick={handleSubmit} disabled={!editingStaff && !formData.user_id}>
-                {editingStaff ? 'Cập nhật' : 'Thêm mới'}
+              <Button
+                onClick={handleSubmit}
+                disabled={!editingStaff && (!formData.name || !formData.email || !formData.phone || !formData.password || !formData.code_id)}
+              >
+                {editingStaff ? 'Cập nhật' : 'Thêm nhân viên'}
               </Button>
             </DialogFooter>
           </DialogContent>

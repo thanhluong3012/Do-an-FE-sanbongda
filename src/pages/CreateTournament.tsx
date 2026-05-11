@@ -233,7 +233,7 @@ export default function CreateTournament() {
       );
 
       if (price) {
-        total += price.price_per_session;
+        total += Number(price.price_per_session) || 0;
       }
     });
 
@@ -256,6 +256,13 @@ export default function CreateTournament() {
     }
   };
 
+  // Compatible field types map: giải X có thể book các sân loại nào
+  const compatibleTypes: Record<string, string[]> = {
+    '5v5':   ['5v5'],
+    '7v7':   ['7v7', '5v5'],
+    '11v11': ['11v11', '7v7', '5v5'],
+  };
+
   // Load sub-fields when cluster is selected
   const handleClusterSelect = async (clusterId: number) => {
     const cluster = fieldClusters.find(c => c.id === clusterId);
@@ -268,8 +275,9 @@ export default function CreateTournament() {
     setIsLoadingFields(true);
     try {
       const fields = await fieldComplexService.getFieldsByClusterId(clusterId);
-      // Filter by selected field type
-      const filteredFields = fields.filter((f: SubField) => f.field_type === formData.field_type);
+      // Filter by compatible field types
+      const allowed = compatibleTypes[formData.field_type] || [formData.field_type];
+      const filteredFields = fields.filter((f: SubField) => allowed.includes(f.field_type));
       setSubFields(filteredFields);
     } catch (error: any) {
       toast({
@@ -292,12 +300,13 @@ export default function CreateTournament() {
       setIsLoadingFields(true);
       try {
         const fields = await fieldComplexService.getFieldsByClusterId(selectedCluster.id);
-        const filteredFields = fields.filter((f: SubField) => f.field_type === fieldType);
+        const allowed = compatibleTypes[fieldType] || [fieldType];
+        const filteredFields = fields.filter((f: SubField) => allowed.includes(f.field_type));
         setSubFields(filteredFields);
       } catch (error: any) {
         toast({
           title: 'Lỗi',
-          description: 'Không thể tải danh sách sân',
+          description: error.response?.data?.message || 'Không thể tải danh sách sân',
           variant: 'destructive',
         });
         setSubFields([]);
@@ -452,6 +461,29 @@ export default function CreateTournament() {
         b => !(b.field_id === field.id && b.time_slot_id === timeSlot.id && b.booking_date === dateStr)
       ));
     } else {
+      // Kiểm tra conflict: full_day không thể chọn cùng buổi khác, và ngược lại
+      const bookingsForFieldDate = selectedBookings.filter(
+        b => b.field_id === field.id && b.booking_date === dateStr
+      );
+
+      if (timeSlot.id === 'full_day' && bookingsForFieldDate.length > 0) {
+        toast({
+          title: 'Không hợp lệ',
+          description: 'Không thể chọn "Cả ngày" khi đã chọn buổi khác. Hãy bỏ chọn các buổi trước.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (timeSlot.id !== 'full_day' && bookingsForFieldDate.some(b => b.time_slot_id === 'full_day')) {
+        toast({
+          title: 'Không hợp lệ',
+          description: 'Không thể chọn buổi riêng khi đã chọn "Cả ngày". Hãy bỏ chọn "Cả ngày" trước.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       // Add booking
       setSelectedBookings([
         ...selectedBookings,
@@ -636,7 +668,6 @@ export default function CreateTournament() {
       ...formData,
       bookings: bookingsData,
       payment_method: paymentMethod,
-      payment_proof_url: paymentMethod === 'transfer' ? paymentProofUrl : undefined,
     };
 
     console.log('📤 Payload gửi lên backend:', JSON.stringify(payload, null, 2));
@@ -645,7 +676,7 @@ export default function CreateTournament() {
     try {
       const createdTournament = await tournamentService.create(payload);
       console.log('✅ Tournament created successfully:', createdTournament);
-      const tournamentId = createdTournament?.id;
+      const tournamentId = createdTournament.tournament?.id;
       console.log('Tournament ID:', tournamentId);
       
       if (!tournamentId) {
@@ -658,7 +689,31 @@ export default function CreateTournament() {
         navigate('/my-tournaments');
         return;
       }
-      
+
+      debugger;
+
+      // Bước 2: Gửi URL bill chuyển khoản lên BE (endpoint riêng)
+      if (paymentMethod === 'transfer' && paymentProofUrl) {
+        try {
+          tournamentService.uploadPaymentProofTournaments(tournamentId, paymentProofUrl);
+          const books: any[] = createdTournament.bookings || [];
+          console.log('📋 Bookings to upload proof:', books.map((b: any) => b.id));
+          await Promise.all(
+            books.map((book: any) =>
+              tournamentService.uploadPaymentProof(book.id, paymentProofUrl)
+            )
+          );
+          console.log('✅ Payment proof URL sent to BE');
+        } catch (proofError) {
+          console.error('Error sending payment proof:', proofError);
+          toast({
+            title: 'Cảnh báo',
+            description: 'Tạo giải thành công nhưng không thể gửi bill thanh toán. Vui lòng thử lại trong trang chi tiết giải.',
+            variant: 'default',
+          });
+        }
+      }
+
       // Success message based on payment method
       if (paymentMethod === 'transfer') {
         toast({
@@ -666,7 +721,6 @@ export default function CreateTournament() {
           description: `Giải đấu "${payload.name}" đã được tạo và bill chuyển khoản đã được gửi. Đang chờ chủ sân xác nhận thanh toán. Bạn sẽ nhận được thông báo khi thanh toán được xác nhận.`,
         });
       } else {
-        // Thanh toán tiền mặt
         toast({
           title: '🎉 Tạo giải đấu thành công!',
           description: `Giải đấu "${payload.name}" đã được tạo. Vui lòng liên hệ chủ sân để thanh toán tiền mặt. Sau khi chủ sân xác nhận thanh toán, bạn có thể mở đăng ký giải.`,
@@ -1128,13 +1182,36 @@ export default function CreateTournament() {
         <CardContent className="space-y-6">
           <div className="space-y-3">
             <Label>Chọn các ngày đặt sân</Label>
-            <Calendar
-              mode="multiple"
-              selected={bookingDates}
-              onSelect={(dates) => setBookingDates(dates || [])}
-              disabled={(date) => date < new Date()}
-              className="rounded-md border"
-            />
+            {!startDate || !endDate ? (
+              <Alert variant="destructive">
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  Vui lòng quay lại Bước 1 và chọn ngày bắt đầu / kết thúc giải đấu trước.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Chỉ có thể chọn ngày trong khoảng thi đấu:{' '}
+                  <span className="font-medium text-foreground">
+                    {format(startDate, 'dd/MM/yyyy', { locale: vi })} – {format(endDate, 'dd/MM/yyyy', { locale: vi })}
+                  </span>
+                </p>
+                <Calendar
+                  mode="multiple"
+                  selected={bookingDates}
+                  onSelect={(dates) => setBookingDates(dates || [])}
+                  disabled={(date) => {
+                    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                    const s = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+                    const e = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+                    return d < s || d > e;
+                  }}
+                  defaultMonth={startDate}
+                  className="rounded-md border"
+                />
+              </>
+            )}
             {bookingDates.length > 0 && (
               <Alert className="bg-blue-50 border-blue-200">
                 <Info className="h-4 w-4 text-blue-600" />
@@ -1178,12 +1255,30 @@ export default function CreateTournament() {
                     </AlertDescription>
                   </Alert>
 
-                  {subFields.map((field) => (
-                    <Card key={field.id}>
+                  {/* Hiển thị chú thích khi có sân ghép */}
+                  {subFields.some(f => f.field_type !== formData.field_type) && (
+                    <Alert className="bg-amber-50 border-amber-300">
+                      <Info className="h-4 w-4 text-amber-600" />
+                      <AlertDescription className="text-sm text-amber-900">
+                        <p className="font-semibold mb-1">🔀 Sân ghép — Cụm sân này không có sân {formData.field_type} riêng</p>
+                        <p>Các sân nhỏ hơn (được đánh dấu <span className="font-semibold">🔀</span>) có thể được ghép lại để tổ chức giải {formData.field_type}. Hãy chọn book tất cả các sân cần thiết.</p>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {subFields.map((field) => {
+                        const isMerged = field.field_type !== formData.field_type;
+                        return (
+                    <Card key={field.id} className={isMerged ? 'border-amber-300' : ''}>
                       <CardHeader className="pb-3">
-                        <CardTitle className="text-base">
+                        <CardTitle className="text-base flex items-center gap-2 flex-wrap">
                           {field.name || `Sân ${field.field_type} #${field.id}`}
-                          <Badge variant="outline" className="ml-2">{field.field_type}</Badge>
+                          <Badge variant="outline">{field.field_type}</Badge>
+                          {isMerged && (
+                            <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs">
+                              🔀 Sân ghép cho giải {formData.field_type}
+                            </Badge>
+                          )}
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -1238,7 +1333,8 @@ export default function CreateTournament() {
                         </div>
                       </CardContent>
                     </Card>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </div>
@@ -1301,7 +1397,7 @@ export default function CreateTournament() {
                     </div>
                     {price && (
                       <span className="font-semibold text-green-600 ml-4">
-                        {formatVND(price.price_per_session)}
+                        {formatVND(Number(price.price_per_session) || 0)}
                       </span>
                     )}
                   </div>

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import RoleBasedLayout from '@/components/layout/RoleBasedLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   AlertCircle, Calendar as CalendarIcon, Clock, DollarSign, 
-  Filter, RefreshCw, User, Phone, MapPin, CheckCircle, XCircle, Loader2
+  Filter, RefreshCw, User, Phone, MapPin, CheckCircle, XCircle, Loader2,
+  ChevronDown, ChevronUp, Trophy
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -17,7 +19,6 @@ import { fieldComplexService, FieldComplex } from '@/services/fieldComplexServic
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useBookingRealtimeSync, SyncMessage } from '@/hooks/useRealtimeSync';
-import { useCallback } from 'react';
 
 const OwnerBookings = () => {
   const { toast } = useToast();
@@ -26,8 +27,38 @@ const OwnerBookings = () => {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedCluster, setSelectedCluster] = useState<string>('all');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>('all');
   const [selectedBookingType, setSelectedBookingType] = useState<string>('all');
+  const [expandedTournaments, setExpandedTournaments] = useState<Set<number>>(new Set());
+
+  const toggleTournamentExpand = (tournamentId: number) => {
+    setExpandedTournaments(prev => {
+      const next = new Set(prev);
+      if (next.has(tournamentId)) next.delete(tournamentId);
+      else next.add(tournamentId);
+      return next;
+    });
+  };
+
+  // Group tournament bookings by tournament_id
+  const groupBookings = (list: Booking[]) => {
+    const regular: Booking[] = [];
+    const tournamentMap = new Map<number, { name: string; bookings: Booking[] }>();
+
+    list.forEach(b => {
+      if (b.booking_type === 'tournament' && b.tournament_id) {
+        const key = b.tournament_id;
+        if (!tournamentMap.has(key)) {
+          tournamentMap.set(key, { name: b.tournament_name || `Gi\u1ea3i \u0111\u1ea5u #${key}`, bookings: [] });
+        }
+        tournamentMap.get(key)!.bookings.push(b);
+      } else {
+        regular.push(b);
+      }
+    });
+
+    return { regular, tournaments: tournamentMap };
+  };
 
   useEffect(() => {
     const init = async () => {
@@ -40,7 +71,7 @@ const OwnerBookings = () => {
   useEffect(() => {
     // Reload when filters change
     loadBookings();
-  }, [selectedDate, selectedCluster, selectedStatus, selectedBookingType]);
+  }, [selectedDate, selectedCluster, selectedPaymentStatus, selectedBookingType]);
 
   // Auto-reload when window gains focus (user switches back from other page)
   useEffect(() => {
@@ -51,7 +82,7 @@ const OwnerBookings = () => {
     
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [selectedDate, selectedCluster, selectedStatus, selectedBookingType]);
+  }, [selectedDate, selectedCluster, selectedPaymentStatus, selectedBookingType]);
 
   // Real-time sync từ tab khác (User booking)
   const handleBookingUpdate = useCallback((message: SyncMessage) => {
@@ -71,7 +102,7 @@ const OwnerBookings = () => {
 
     // Reload danh sách bookings
     loadBookings();
-  }, [selectedDate, selectedCluster, selectedStatus, selectedBookingType]);
+  }, [selectedDate, selectedCluster, selectedPaymentStatus, selectedBookingType]);
 
   useBookingRealtimeSync(handleBookingUpdate);
 
@@ -109,9 +140,9 @@ const OwnerBookings = () => {
         filteredBookings = allBookings.filter(b => clusterFieldIds.includes(b.field_id));
       }
       
-      // Filter by status if selected
-      if (selectedStatus !== 'all') {
-        filteredBookings = filteredBookings.filter(b => b.status === selectedStatus);
+      // Filter by payment status if selected
+      if (selectedPaymentStatus !== 'all') {
+        filteredBookings = filteredBookings.filter(b => b.payment_status === selectedPaymentStatus);
       }
       
       console.log('✅ Filtered bookings:', filteredBookings);
@@ -130,14 +161,14 @@ const OwnerBookings = () => {
 
 
 
-  const getStatusBadge = (status: string) => {
+  const getPaymentStatusBadge = (paymentStatus?: string) => {
     const statusConfig = {
-      pending: { label: 'Chờ xác nhận', variant: 'secondary' as const, icon: Clock },
-      confirmed: { label: 'Đã xác nhận', variant: 'default' as const, icon: CheckCircle },
-      cancelled: { label: 'Đã hủy', variant: 'destructive' as const, icon: XCircle },
-      completed: { label: 'Hoàn thành', variant: 'outline' as const, icon: CheckCircle },
+      pending: { label: 'Chờ thanh toán', variant: 'secondary' as const, icon: Clock },
+      paid: { label: 'Đã thanh toán', variant: 'default' as const, icon: CheckCircle },
+      failed: { label: 'Thất bại', variant: 'destructive' as const, icon: XCircle },
+      refunded: { label: 'Hoàn tiền', variant: 'outline' as const, icon: DollarSign },
     };
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
+    const config = statusConfig[paymentStatus as keyof typeof statusConfig] || statusConfig.pending;
     const Icon = config.icon;
     return (
       <Badge variant={config.variant} className="gap-1">
@@ -166,6 +197,15 @@ const OwnerBookings = () => {
       style: 'currency',
       currency: 'VND'
     }).format(amount);
+  };
+
+  const getSessionLabel = (startTime?: string): string => {
+    if (!startTime) return '';
+    const hour = parseInt(startTime.split(':')[0], 10);
+    if (hour >= 6 && hour < 12) return '🌅 Sáng';
+    if (hour >= 12 && hour < 18) return '☀️ Chiều';
+    if (hour >= 18) return '🌙 Tối';
+    return '';
   };
 
   return (
@@ -244,19 +284,19 @@ const OwnerBookings = () => {
                 </Select>
               </div>
 
-              {/* Status Filter */}
+              {/* Payment Status Filter */}
               <div>
-                <label className="text-sm font-medium mb-2 block">Trạng thái</label>
-                <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                <label className="text-sm font-medium mb-2 block">Thanh toán</label>
+                <Select value={selectedPaymentStatus} onValueChange={setSelectedPaymentStatus}>
                   <SelectTrigger>
                     <SelectValue placeholder="Tất cả trạng thái" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tất cả</SelectItem>
-                    <SelectItem value="pending">Chờ xác nhận</SelectItem>
-                    <SelectItem value="confirmed">Đã xác nhận</SelectItem>
-                    <SelectItem value="cancelled">Đã hủy</SelectItem>
-                    <SelectItem value="completed">Hoàn thành</SelectItem>
+                    <SelectItem value="pending">Chờ thanh toán</SelectItem>
+                    <SelectItem value="paid">Đã thanh toán</SelectItem>
+                    <SelectItem value="failed">Thất bại</SelectItem>
+                    <SelectItem value="refunded">Hoàn tiền</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -318,71 +358,179 @@ const OwnerBookings = () => {
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Ngày đặt</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Loại</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Thời gian</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Buổi</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Khách hàng</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Giá</th>
-                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Trạng thái</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Thanh toán</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {bookings.map((booking) => {
-                      const fieldInfo = getFieldInfo(booking.field_id);
-                      return (
-                        <tr key={booking.id} className="hover:bg-gray-50">
-                          <td className="px-2 py-2">
-                            <div className="text-xs">
-                              <div className="font-medium text-gray-900 truncate max-w-[180px]">{fieldInfo.clusterName}</div>
-                              <div className="text-gray-500 flex items-center gap-1">
-                                <MapPin className="w-3 h-3 flex-shrink-0" />
-                                <span className="truncate">{fieldInfo.fieldName}</span>
+                    {(() => {
+                      const { regular, tournaments } = groupBookings(bookings);
+                      const rows: React.ReactNode[] = [];
+
+                      // Render tournament groups
+                      tournaments.forEach((group, tournamentId) => {
+                        const totalPrice = group.bookings.reduce((s, b) => s + (Number(b.total_price) || 0), 0);
+                        const firstBooking = group.bookings[0];
+                        const isExpanded = expandedTournaments.has(tournamentId);
+                        const dates = [...new Set(group.bookings.map(b => b.booking_date))].sort();
+
+                        rows.push(
+                          <tr
+                            key={`tournament-${tournamentId}`}
+                            className="bg-purple-50 hover:bg-purple-100 cursor-pointer"
+                            onClick={() => toggleTournamentExpand(tournamentId)}
+                          >
+                            <td className="px-2 py-2">
+                              <div className="flex items-center gap-1 text-xs">
+                                <Trophy className="w-3 h-3 text-purple-600 flex-shrink-0" />
+                                <span className="font-semibold text-purple-900 truncate max-w-[180px]">{group.name}</span>
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-2 py-2 whitespace-nowrap">
-                            <div className="text-xs text-gray-700">
-                              {booking.booking_date ? format(new Date(booking.booking_date), 'dd/MM/yy', { locale: vi }) : 'N/A'}
-                            </div>
-                          </td>
-                          <td className="px-2 py-2">
-                            {booking.booking_type === 'tournament' ? (
+                              <div className="text-xs text-purple-600 mt-0.5 ml-4">{group.bookings.length} lượt sân</div>
+                            </td>
+                            <td className="px-2 py-2 whitespace-nowrap">
+                              <div className="text-xs text-gray-700">
+                                {dates.length === 1
+                                  ? format(new Date(dates[0]), 'dd/MM/yy', { locale: vi })
+                                  : `${format(new Date(dates[0]), 'dd/MM', { locale: vi })} – ${format(new Date(dates[dates.length - 1]), 'dd/MM/yy', { locale: vi })}`}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2">
                               <Badge variant="secondary" className="bg-purple-100 text-purple-700 border-purple-300 text-xs px-2 py-0">
                                 🏆 Giải
                               </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-gray-700 text-xs px-2 py-0">
-                                ⚽
-                              </Badge>
-                            )}
-                          </td>
-                          <td className="px-2 py-2 whitespace-nowrap">
-                            <div className="text-xs text-gray-700">
-                              {booking.start_time?.substring(0, 5) || '--:--'} - {booking.end_time?.substring(0, 5) || '--:--'}
-                            </div>
-                          </td>
-                          <td className="px-2 py-2">
-                            <div className="text-xs">
-                              <div className="font-medium text-gray-900 flex items-center gap-1">
-                                <User className="w-3 h-3 flex-shrink-0" />
-                                <span className="truncate max-w-[120px]">{booking.customer_name || 'N/A'}</span>
-                              </div>
-                              {booking.customer_phone && (
-                                <div className="text-gray-500 flex items-center gap-1">
-                                  <Phone className="w-3 h-3 flex-shrink-0" />
-                                  {booking.customer_phone}
+                            </td>
+                            <td className="px-2 py-2 whitespace-nowrap">
+                              <div className="text-xs text-gray-500 italic">Nhiều buổi</div>
+                            </td>
+                            <td className="px-2 py-2">
+                              {/* Buổi – nhiều buổi khác nhau, không hiển thị */}
+                            </td>
+                            <td className="px-2 py-2">
+                              <div className="text-xs">
+                                <div className="font-medium text-gray-900 flex items-center gap-1">
+                                  <User className="w-3 h-3 flex-shrink-0" />
+                                  <span className="truncate max-w-[120px]">{firstBooking.customer_name || 'N/A'}</span>
                                 </div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-2 py-2 whitespace-nowrap">
-                            <div className="font-medium text-gray-900 text-xs">
-                              {formatCurrency(booking.total_price)}
-                            </div>
-                          </td>
-                          <td className="px-2 py-2">
-                            {getStatusBadge(booking.status)}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                                {firstBooking.customer_phone && (
+                                  <div className="text-gray-500 flex items-center gap-1">
+                                    <Phone className="w-3 h-3 flex-shrink-0" />
+                                    {firstBooking.customer_phone}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 whitespace-nowrap">
+                              <div className="font-semibold text-purple-700 text-xs">{formatCurrency(totalPrice)}</div>
+                            </td>
+                            <td className="px-2 py-2">
+                              <div className="flex items-center gap-1">
+                                {getPaymentStatusBadge(firstBooking.payment_status)}
+                                {isExpanded ? <ChevronUp className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+
+                        // Render sub-rows when expanded
+                        if (isExpanded) {
+                          group.bookings.forEach(b => {
+                            const fieldInfo = getFieldInfo(b.field_id);
+                            rows.push(
+                              <tr key={`booking-${b.id}`} className="bg-purple-50/40 border-l-4 border-l-purple-300">
+                                <td className="px-2 py-1.5 pl-6">
+                                  <div className="text-xs text-gray-600">
+                                    <div className="truncate max-w-[160px]">{fieldInfo.clusterName}</div>
+                                    <div className="flex items-center gap-1 text-gray-400">
+                                      <MapPin className="w-3 h-3" />
+                                      {fieldInfo.fieldName}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-2 py-1.5 whitespace-nowrap">
+                                  <div className="text-xs text-gray-600">
+                                    {b.booking_date ? format(new Date(b.booking_date), 'dd/MM/yy', { locale: vi }) : 'N/A'}
+                                  </div>
+                                </td>
+                                <td className="px-2 py-1.5" />
+                                <td className="px-2 py-1.5 whitespace-nowrap">
+                                  <div className="text-xs text-gray-600">
+                                    {b.start_time?.substring(0, 5) || '--:--'} - {b.end_time?.substring(0, 5) || '--:--'}
+                                  </div>
+                                </td>
+                                <td className="px-2 py-1.5 whitespace-nowrap">
+                                  <div className="text-xs text-blue-600 font-medium">{getSessionLabel(b.start_time)}</div>
+                                </td>
+                                <td className="px-2 py-1.5" />
+                                <td className="px-2 py-1.5 whitespace-nowrap">
+                                  <div className="text-xs text-gray-500">{formatCurrency(b.total_price)}</div>
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  {getPaymentStatusBadge(b.payment_status)}
+                                </td>
+                              </tr>
+                            );
+                          });
+                        }
+                      });
+
+                      // Render regular bookings
+                      regular.forEach(booking => {
+                        const fieldInfo = getFieldInfo(booking.field_id);
+                        rows.push(
+                          <tr key={booking.id} className="hover:bg-gray-50">
+                            <td className="px-2 py-2">
+                              <div className="text-xs">
+                                <div className="font-medium text-gray-900 truncate max-w-[180px]">{fieldInfo.clusterName}</div>
+                                <div className="text-gray-500 flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 flex-shrink-0" />
+                                  <span className="truncate">{fieldInfo.fieldName}</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 whitespace-nowrap">
+                              <div className="text-xs text-gray-700">
+                                {booking.booking_date ? format(new Date(booking.booking_date), 'dd/MM/yy', { locale: vi }) : 'N/A'}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2">
+                              <Badge variant="outline" className="text-gray-700 text-xs px-2 py-0">⚽</Badge>
+                            </td>
+                            <td className="px-2 py-2 whitespace-nowrap">
+                              <div className="text-xs text-gray-700">
+                                {booking.start_time?.substring(0, 5) || '--:--'} - {booking.end_time?.substring(0, 5) || '--:--'}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 whitespace-nowrap">
+                              <div className="text-xs text-blue-600 font-medium">{getSessionLabel(booking.start_time)}</div>
+                            </td>
+                            <td className="px-2 py-2">
+                              <div className="text-xs">
+                                <div className="font-medium text-gray-900 flex items-center gap-1">
+                                  <User className="w-3 h-3 flex-shrink-0" />
+                                  <span className="truncate max-w-[120px]">{booking.customer_name || 'N/A'}</span>
+                                </div>
+                                {booking.customer_phone && (
+                                  <div className="text-gray-500 flex items-center gap-1">
+                                    <Phone className="w-3 h-3 flex-shrink-0" />
+                                    {booking.customer_phone}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 whitespace-nowrap">
+                              <div className="font-medium text-gray-900 text-xs">{formatCurrency(booking.total_price)}</div>
+                            </td>
+                            <td className="px-2 py-2">
+                              {getPaymentStatusBadge(booking.payment_status)}
+                            </td>
+                          </tr>
+                        );
+                      });
+
+                      return rows;
+                    })()}
                   </tbody>
                 </table>
               </div>

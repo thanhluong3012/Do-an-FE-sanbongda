@@ -1,7 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 
 interface TournamentStatusBadgeProps {
-  status: 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled' | 'deleted';
   className?: string;
 }
 
@@ -18,6 +18,8 @@ export const TournamentStatusBadge = ({ status, className = '' }: TournamentStat
         return { label: 'Đã kết thúc', color: 'bg-purple-500' };
       case 'cancelled':
         return { label: 'Đã hủy', color: 'bg-red-500' };
+      case 'deleted':
+        return { label: 'Đã xóa', color: 'bg-red-700' };
       default:
         return { label: status, color: 'bg-gray-500' };
     }

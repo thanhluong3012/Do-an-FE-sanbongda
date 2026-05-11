@@ -15,12 +15,76 @@ export interface Booking {
   payment_status?: 'pending' | 'paid' | 'refunded';
   payment_proof_url?: string;
   booking_type?: 'regular' | 'tournament';
+  tournament_id?: number;
+  tournament_name?: string;
   customer_name?: string;
   customer_phone?: string;
   customer_email?: string;
   note?: string;
   created_at?: string;
   updated_at?: string;
+  field_name?: string;
+  field_cluster_name?: string;
+  confirmed_by?: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+  };
+  payment_confirmed_at?: string;
+}
+
+// Interface cho booking detail từ API
+export interface BookingDetail {
+  booking_id: number;
+  booking_code: string;
+  booking_type: 'regular' | 'tournament';
+  booking_type_label: string;
+  status: string;
+  created_at: string;
+  field: {
+    id: number;
+    name: string;
+    type: string;
+    field_cluster: {
+      id: number;
+      name: string;
+      address: string;
+      phone: string;
+    };
+  };
+  schedule: {
+    day_book: string;
+    day_book_formatted: string;
+    day_of_week: string;
+    start_time: string;
+    end_time: string;
+    duration_hours: number;
+  };
+  payment: {
+    total_price: number;
+    total_price_formatted: string;
+    payment_method: 'transfer' | 'cash';
+    payment_method_label: string;
+    payment_status: string;
+    payment_status_label: string;
+    payment_proof_url?: string;
+    payment_confirmed_at?: string;
+    payment_note?: string;
+    confirmed_by?: {
+      id: number;
+      name: string;
+      email: string;
+      role: string;
+    };
+  };
+  customer: {
+    id: number;
+    name: string;
+    email: string;
+    phone: string;
+  };
+  tournament: any;
 }
 
 // Interface cho booking request
@@ -194,25 +258,56 @@ export const bookingService = {
       const bookings = rawData.map((booking: any) => {
         const mapped = {
           ...booking,
-          // Map day_book to booking_date for frontend consistency
           booking_date: booking.day_book || booking.booking_date,
-          // Map customer info from various possible fields
           customer_name: booking.customer_name || booking.name || booking.user?.name || booking.user?.full_name,
           customer_phone: booking.customer_phone || booking.phone || booking.user?.phone,
           customer_email: booking.customer_email || booking.email || booking.user?.email,
+          payment_method: booking.payment_method || booking.tournament?.payment_method,
+          payment_proof_url: booking.payment_proof_url || booking.payment_proof || booking.tournament?.payment_proof || booking.tournament?.payment_proof_url,
+          tournament_name: booking.tournament_name || booking.tournament?.name,
         };
-        
-        console.log(`📋 Booking #${mapped.id} mapped:`, {
-          id: mapped.id,
-          payment_method: mapped.payment_method,
-          payment_status: mapped.payment_status,
-          status: mapped.status,
-          payment_proof_url: mapped.payment_proof_url
-        });
-        
         return mapped;
       });
-      
+
+      // Enrich tournament bookings: fetch tournament details for payment_method / payment_proof_url / name
+      const tournamentIds = [...new Set(
+        bookings
+          .filter((b: any) => b.tournament_id)
+          .map((b: any) => b.tournament_id as number)
+      )];
+
+      if (tournamentIds.length > 0) {
+        const tournamentDetails = await Promise.all(
+          tournamentIds.map((id: number) =>
+            api.get(`/tournaments/${id}`)
+              .then(r => r.data?.data || r.data?.tournament || r.data)
+              .catch(() => null)
+          )
+        );
+        const tournamentMap = new Map<number, any>();
+        tournamentDetails.forEach((t: any) => { if (t?.id) tournamentMap.set(t.id, t); });
+
+        const enriched = bookings.map((b: any) => {
+          if (b.tournament_id) {
+            const t = tournamentMap.get(b.tournament_id);
+            if (t) {
+              return {
+                ...b,
+                payment_method: b.payment_method || t.payment_method,
+                payment_proof_url: b.payment_proof_url || t.payment_proof || t.payment_proof_url,
+                tournament_name: b.tournament_name || t.name,
+                // Tournament payment_status là nguồn chính xác nhất
+                payment_status: t.payment_status ?? b.payment_status,
+              };
+            }
+          }
+          return b;
+        });
+
+        console.log('✅ Enriched bookings:', enriched.length);
+        return enriched;
+      }
+
       console.log('✅ Mapped bookings:', bookings.length, 'items');
       return bookings;
     } catch (error: any) {
@@ -243,11 +338,42 @@ export const bookingService = {
         customer_name: booking.customer_name || booking.name || booking.user?.name || booking.user?.full_name,
         customer_phone: booking.customer_phone || booking.phone || booking.user?.phone,
         customer_email: booking.customer_email || booking.email || booking.user?.email,
+        // For tournament bookings, payment info is stored on the tournament model
+        payment_method: booking.payment_method || booking.tournament?.payment_method,
+        payment_proof_url: booking.payment_proof_url || booking.tournament?.payment_proof_url,
+        tournament_name: booking.tournament_name || booking.tournament?.name,
       })) : [];
       
       return bookings;
     } catch (error) {
       console.error('Error fetching owner bookings:', error);
+      return [];
+    }
+  },
+
+  // Get paid bookings with detailed info (for revenue report)
+  getPaidBookingsWithDetails: async (): Promise<Booking[]> => {
+    try {
+      const response = await api.get('/books', { 
+        params: { payment_status: 'paid' } 
+      });
+      const rawData = response.data?.data || response.data || [];
+      const bookings = Array.isArray(rawData) ? rawData.map((booking: any) => ({
+        ...booking,
+        booking_date: booking.day_book || booking.booking_date,
+        customer_name: booking.customer_name || booking.name || booking.user?.name || booking.user?.full_name,
+        customer_phone: booking.customer_phone || booking.phone || booking.user?.phone,
+        customer_email: booking.customer_email || booking.email || booking.user?.email,
+        field_name: booking.field?.name || booking.field_name,
+        field_cluster_name: booking.field?.field_cluster?.name || booking.field_cluster_name,
+        payment_method: booking.payment_method || booking.tournament?.payment_method,
+        payment_confirmed_at: booking.payment_confirmed_at || booking.updated_at,
+        confirmed_by: booking.confirmed_by,
+      })) : [];
+      
+      return bookings;
+    } catch (error) {
+      console.error('Error fetching paid bookings:', error);
       return [];
     }
   },

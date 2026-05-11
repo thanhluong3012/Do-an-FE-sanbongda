@@ -83,9 +83,27 @@ export const NotificationBell = () => {
       } catch { /* silent */ }
     }
 
-    // Navigate nếu có tournament_id
+    // Navigate dựa theo loại thông báo
     const tournamentId = notification.data?.tournament_id;
-    if (tournamentId) {
+    const bookingId = notification.data?.booking_id;
+    const isBookingNotification =
+      bookingId != null ||
+      notification.type.toLowerCase().includes('book') ||
+      notification.title.toLowerCase().includes('đặt sân') ||
+      notification.title.toLowerCase().includes('booking') ||
+      notification.message.toLowerCase().includes('đặt sân');
+
+    if (isBookingNotification) {
+      setOpen(false);
+      // role_id: 1=Admin, 2=Owner, 3=Staff, 4=Member
+      if (user?.role_id === 2) {
+        navigate('/owner/bookings');
+      } else if (user?.role_id === 3) {
+        navigate('/staff/bookings');
+      } else {
+        navigate('/my-bookings');
+      }
+    } else if (tournamentId) {
       setOpen(false);
       navigate(`/tournament/${tournamentId}`);
     }

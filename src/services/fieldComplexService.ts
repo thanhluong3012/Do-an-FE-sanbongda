@@ -86,10 +86,9 @@ export const fieldComplexService = {
 
   // Lấy các sân con của 1 cụm sân (Public API - không cần quyền đặc biệt)
   getFieldsByClusterId: async (clusterId: number) => {
-    const response = await api.get('/public/fields', {
-      params: { field_cluster_id: clusterId }
-    });
-    return response.data?.data || response.data;
+    const response = await api.get(`/public/field-clusters/${clusterId}`);
+    const data = response.data?.data || response.data;
+    return data?.fields || [];
   },
 
   // Lấy các sân con AVAILABLE của 1 cụm sân (dùng cho booking - chỉ sân hoạt động)

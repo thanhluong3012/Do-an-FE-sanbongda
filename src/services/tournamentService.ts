@@ -38,6 +38,8 @@ export interface TournamentBracket {
 
 // Interface cho Tournament
 export interface Tournament {
+  bookings: any;
+  tournament: any;
   id: number;
   name: string;
   description?: string;
@@ -48,15 +50,18 @@ export interface Tournament {
   registration_end: string;
   start_date: string;
   end_date: string;
-  status: 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled' | 'deleted';
   schedule_published?: boolean; // Trạng thái công khai lịch thi đấu
+  rejected_reason?: string; // Lý do từ chối thanh toán
+  deleted_bookings?: number; // Số booking bị xóa khi giải bị hủy
   field_cluster_id: number;
   organizer_id?: number;
   
   // Payment fields
   payment_method?: 'cash' | 'transfer';
-  payment_status?: 'pending' | 'paid' | 'rejected';
-  payment_proof_url?: string;
+  payment_status?: 'pending' | 'paid' | 'rejected' | 'failed';
+  payment_proof?: string;
+  payment_proof_url?: string; // alias – some responses use this
   total_price?: number;
   
   // Rules file fields
@@ -152,7 +157,7 @@ export interface TournamentRequest {
   field_cluster_id: number;
   field_type?: string; // Loại sân (5v5, 7v7, 11v11) - optional để backward compatible
   payment_method?: 'cash' | 'transfer'; // Phương thức thanh toán
-  payment_proof_url?: string; // URL bill chuyển khoản từ Supabase
+  payment_proof?: string; // URL bill chuyển khoản từ Supabase (field name BE dùng)
   bookings?: Array<{ // Danh sách sân cần book
     field_id: number;
     date: string; // YYYY-MM-DD
@@ -243,12 +248,14 @@ export const tournamentService = {
       const response = await api.post('/tournaments', data);
       const raw = response.data;
 
+      debugger;
+
       // { success: true, data: { id, name, ... } }
       if (raw?.data && typeof raw.data === 'object' && !Array.isArray(raw.data) && raw.data?.id) return raw.data;
       // { tournament: { id, ... } }
       if (raw?.tournament?.id) return raw.tournament;
       // { data: { tournament: { ... } } }
-      if (raw?.data?.tournament?.id) return raw.data.tournament;
+      if (raw?.data?.tournament?.id) return raw.data;
       // Direct object { id, name, ... }
       if (raw?.id) return raw;
 
@@ -450,13 +457,41 @@ export const tournamentService = {
   // PAYMENT MANAGEMENT
   // ==========================================
 
-  // Upload payment proof (bill chuyển khoản)
-  uploadPaymentProof: async (id: number, formData: FormData): Promise<any> => {
+  // Owner xác nhận thanh toán (approve/reject) - gọi theo từng booking ID
+  confirmPayment: async (bookingId: number, action: 'approve' | 'reject', note?: string): Promise<any> => {
     try {
-      const response = await api.post(`/tournaments/${id}/upload-payment-proof`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      console.log(`🏦 [API] Confirming payment for booking ${bookingId}:`, { action, note });
+      const body: Record<string, string> = { action };
+      if (note) body.note = note;
+      const response = await api.put(`/books/${bookingId}/confirm-payment`, body);
+      console.log('✅ [API] Payment confirmation response:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error(`❌ [API] Error confirming payment for booking ${bookingId}:`, error);
+      console.error('Response data:', error?.response?.data);
+      throw error;
+    }
+  },
+
+  // Gọi confirmPayment cho tất cả bookings của một tournament
+  confirmPaymentAllBookings: async (bookings: any[], action: 'approve' | 'reject', note?: string): Promise<any[]> => {
+    const results = await Promise.all(
+      bookings.map((b: any) => tournamentService.confirmPayment(b.id, action, note))
+    );
+    return results;
+  },
+
+  // ==========================================
+  // RULES FILE MANAGEMENT
+  // ==========================================
+
+  // Gửi URL bill chuyển khoản cho BE lưu vào DB
+  // POST /api/tournaments/{id}/upload-payment-proof
+  // Body: { payment_proof_url: "<supabase url>" }
+  uploadPaymentProof: async (id: number, paymentProofUrl: string): Promise<any> => {
+    try {
+      const response = await api.post(`/books/${id}/upload-payment-proof`, {
+        payment_proof_url: paymentProofUrl,
       });
       return response.data;
     } catch (error) {
@@ -465,26 +500,17 @@ export const tournamentService = {
     }
   },
 
-  // Owner xác nhận thanh toán (approve/reject)
-  confirmPayment: async (id: number, action: 'approve' | 'reject', note?: string): Promise<any> => {
+  uploadPaymentProofTournaments: async (id: number, paymentProofUrl: string): Promise<any> => {
     try {
-      console.log(`🏦 [API] Confirming payment for tournament ${id}:`, { action, note });
-      const response = await api.put(`/tournaments/${id}/confirm-payment`, { 
-        action,
-        note: note || (action === 'approve' ? 'Đã xác nhận thanh toán' : 'Từ chối thanh toán')
+      const response = await api.post(`/tournaments/${id}/upload-payment-proof`, {
+        payment_proof_url: paymentProofUrl,
       });
-      console.log('✅ [API] Payment confirmation response:', response.data);
       return response.data;
-    } catch (error: any) {
-      console.error(`❌ [API] Error confirming payment for tournament ${id}:`, error);
-      console.error('Response data:', error?.response?.data);
+    } catch (error) {
+      console.error(`Error uploading payment proof for tournament ${id}:`, error);
       throw error;
     }
   },
-
-  // ==========================================
-  // RULES FILE MANAGEMENT
-  // ==========================================
 
   // Upload file thể lệ giải đấu (PDF/DOC/DOCX)
   uploadRulesFile: async (id: number, file: File): Promise<any> => {

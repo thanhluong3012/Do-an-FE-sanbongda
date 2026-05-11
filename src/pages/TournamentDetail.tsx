@@ -508,18 +508,54 @@ const TournamentDetail = () => {
   }
 
   if (tournamentError || !tournament) {
+    // Check if tournament was deleted (404 or "No query results" error)
+    const isDeleted = tournamentError?.includes('No query results') || 
+                     tournamentError?.includes('not found') ||
+                     tournamentError?.includes('404');
+
     return (
       <div className="min-h-screen bg-background">
         <Header />
         <main className="container mx-auto px-4 py-8 mt-20">
-          <Button variant="ghost" onClick={() => navigate('/tournaments')} className="mb-6">
-            <ArrowLeft className="w-4 h-4 mr-2" /> Quay lại danh sách
+          <Button variant="ghost" onClick={() => navigate(-1)} className="mb-6">
+            <ArrowLeft className="w-4 h-4 mr-2" /> Quay lại
           </Button>
-          <Card className="p-12 text-center space-y-3">
-            <AlertCircle className="w-12 h-12 text-destructive mx-auto" />
-            <p className="font-semibold text-lg">Không thể tải giải đấu</p>
-            <p className="text-muted-foreground">{tournamentError || 'Không tìm thấy giải đấu này.'}</p>
-            <Button onClick={loadTournament} variant="outline">Thử lại</Button>
+          <Card className="p-12 text-center space-y-4">
+            <AlertCircle className="w-16 h-16 text-destructive mx-auto" />
+            <div className="space-y-2">
+              <p className="font-semibold text-xl">
+                {isDeleted ? 'Giải đấu không tồn tại' : 'Không thể tải giải đấu'}
+              </p>
+              <p className="text-muted-foreground">
+                {isDeleted 
+                  ? 'Giải đấu này đã bị xóa hoặc không còn tồn tại. Có thể do thanh toán bị từ chối hoặc giải đấu đã bị hủy.'
+                  : (tournamentError || 'Không tìm thấy giải đấu này.')
+                }
+              </p>
+            </div>
+            <div className="flex gap-2 justify-center pt-4">
+              {isDeleted ? (
+                <>
+                  {user && (
+                    <Button onClick={() => navigate('/my-tournaments')} variant="default">
+                      <Trophy className="w-4 h-4 mr-2" />
+                      Quản lý giải đấu
+                    </Button>
+                  )}
+                  <Button onClick={() => navigate('/tournaments')} variant="outline">
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Danh sách giải đấu
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button onClick={loadTournament} variant="default">Thử lại</Button>
+                  <Button onClick={() => navigate('/tournaments')} variant="outline">
+                    Quay lại danh sách
+                  </Button>
+                </>
+              )}
+            </div>
           </Card>
         </main>
         <Footer />

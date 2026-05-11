@@ -96,9 +96,22 @@ export default function OwnerPaymentConfirmation() {
   const handleConfirmPayment = async () => {
     if (!selectedTournament) return;
 
+    const bookings: any[] = Array.isArray(selectedTournament.bookings)
+      ? selectedTournament.bookings
+      : [];
+
+    if (bookings.length === 0) {
+      toast({
+        title: 'Lỗi',
+        description: 'Không tìm thấy thông tin đặt sân của giải đấu này',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       setConfirming(true);
-      await tournamentService.confirmPayment(selectedTournament.id, action, note);
+      await tournamentService.confirmPaymentAllBookings(bookings, action, note);
 
       toast({
         title: 'Thành công',
