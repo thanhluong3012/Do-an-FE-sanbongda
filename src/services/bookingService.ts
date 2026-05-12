@@ -1,4 +1,5 @@
 import api from '@/lib/axios';
+import { uploadImage } from '@/lib/storage';
 
 // Interface cho booking
 export interface Booking {
@@ -386,16 +387,15 @@ export const bookingService = {
   // Upload payment proof/bill for transfer payment
   uploadPaymentProof: async (bookingId: number, file: File) => {
     try {
-      const formData = new FormData();
-      formData.append('payment_proof', file);
-      
       console.log('📤 Uploading payment proof for booking:', bookingId);
       console.log('📎 File:', file.name, file.size, 'bytes');
+
+      // Backend requires payment_proof_url, so upload file to storage first.
+      const paymentProofUrl = await uploadImage(file, 'image', 'payment-proofs');
+      console.log('🔗 Payment proof URL:', paymentProofUrl);
       
-      const response = await api.post(`/books/${bookingId}/upload-payment-proof`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      const response = await api.post(`/books/${bookingId}/upload-payment-proof`, {
+        payment_proof_url: paymentProofUrl,
       });
       
       console.log('✅ Upload response:', response.data);

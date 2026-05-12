@@ -182,7 +182,7 @@ export const tournamentService = {
   // Lấy danh sách giải đấu
   getAll: async (params?: TournamentQueryParams): Promise<Tournament[]> => {
     try {
-      const response = await api.get('/public/tournaments', { params });
+      const response = await api.get('/public/public/tournaments', { params });
       // Format 1: Laravel pagination { success: true, data: { data: [...] } }
       if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
         return response.data.data.data;

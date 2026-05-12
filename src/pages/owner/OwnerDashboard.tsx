@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 const OwnerDashboard = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<PaymentStatistics | null>(null);
+  const [stats, setStats] = useState<any | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -24,7 +24,27 @@ const OwnerDashboard = () => {
     try {
       setLoading(true);
       const data = await paymentService.getPaymentStatistics();
-      setStats(data);
+      
+      // Normalize response data to ensure consistent structure
+      const normalizedData = {
+        ...data,
+        // Ensure by_payment_method has defaults
+        by_payment_method: {
+          cash: data.by_payment_method?.cash ?? 0,
+          transfer: data.by_payment_method?.transfer ?? 0
+        },
+        // Normalize by_booking_type: convert array to object with defaults
+        by_booking_type: Array.isArray(data.by_booking_type) 
+          ? { tournament: { total_bookings: 0, revenue: 0 }, regular: { total_bookings: 0, revenue: 0 } }
+          : {
+              tournament: data.by_booking_type?.tournament || { total_bookings: 0, revenue: 0 },
+              regular: data.by_booking_type?.regular || { total_bookings: 0, revenue: 0 }
+            },
+        // Ensure by_field is an array
+        by_field: Array.isArray(data.by_field) ? data.by_field : []
+      };
+      
+      setStats(normalizedData);
     } catch (error: any) {
       console.error('Error fetching dashboard data:', error);
       toast({
@@ -73,9 +93,7 @@ const OwnerDashboard = () => {
     );
   }
 
-  const totalRevenue = typeof stats.total_revenue === 'string' 
-    ? parseFloat(stats.total_revenue) 
-    : stats.total_revenue;
+  const totalRevenue = stats.total_revenue || 0;
 
   return (
     <RoleBasedLayout>
@@ -229,12 +247,12 @@ const OwnerDashboard = () => {
                   <div>
                     <p className="font-medium">Giải đấu</p>
                     <p className="text-sm text-green-600 font-semibold">
-                      {formatCurrency(stats.by_booking_type.tournament.revenue)}
+                      {formatCurrency(stats.by_booking_type.tournament?.revenue ?? 0)}
                     </p>
                   </div>
                 </div>
                 <Badge variant="secondary" className="text-lg px-4 py-1">
-                  {formatNumber(stats.by_booking_type.tournament.total_bookings)}
+                  {formatNumber(stats.by_booking_type.tournament?.total_bookings ?? 0)}
                 </Badge>
               </div>
               
@@ -246,12 +264,12 @@ const OwnerDashboard = () => {
                   <div>
                     <p className="font-medium">Đặt sân thường</p>
                     <p className="text-sm text-green-600 font-semibold">
-                      {formatCurrency(stats.by_booking_type.regular.revenue)}
+                      {formatCurrency(stats.by_booking_type.regular?.revenue ?? 0)}
                     </p>
                   </div>
                 </div>
                 <Badge variant="secondary" className="text-lg px-4 py-1">
-                  {formatNumber(stats.by_booking_type.regular.total_bookings)}
+                  {formatNumber(stats.by_booking_type.regular?.total_bookings ?? 0)}
                 </Badge>
               </div>
             </CardContent>
@@ -281,39 +299,47 @@ const OwnerDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {stats.by_field.map((field) => (
-                    <tr key={field.field_id} className="hover:bg-muted/30">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="w-4 h-4 text-primary" />
-                          <span className="font-medium">
-                            {field.field_name || `Sân #${field.field_id}`}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge variant="outline">{formatNumber(field.total_bookings)}</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge className="bg-green-100 text-green-800">
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                          {formatNumber(field.paid_count)}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge className="bg-yellow-100 text-yellow-800">
-                          <Clock className="w-3 h-3 mr-1" />
-                          {formatNumber(field.pending_count)}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-green-600">
-                        {formatCurrency(field.revenue)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-muted-foreground">
-                        {formatCurrency(field.pending_revenue)}
+                  {stats.by_field && stats.by_field.length > 0 ? (
+                    stats.by_field.map((field) => (
+                      <tr key={field.field_id} className="hover:bg-muted/30">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-primary" />
+                            <span className="font-medium">
+                              {field.field_name || `Sân #${field.field_id}`}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <Badge variant="outline">{formatNumber(field.total_bookings)}</Badge>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <Badge className="bg-green-100 text-green-800">
+                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            {formatNumber(field.paid_count)}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <Badge className="bg-yellow-100 text-yellow-800">
+                            <Clock className="w-3 h-3 mr-1" />
+                            {formatNumber(field.pending_count)}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-green-600">
+                          {formatCurrency(field.revenue ?? 0)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-muted-foreground">
+                          {formatCurrency(field.pending_revenue ?? 0)}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                        Chưa có dữ liệu booking theo sân
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
                 <tfoot className="bg-muted/50 border-t-2 font-bold">
                   <tr>
@@ -331,7 +357,7 @@ const OwnerDashboard = () => {
                       {formatCurrency(totalRevenue)}
                     </td>
                     <td className="px-4 py-3 text-right text-yellow-600">
-                      {formatCurrency(stats.pending_revenue)}
+                      {formatCurrency(stats.pending_revenue ?? 0)}
                     </td>
                   </tr>
                 </tfoot>
