@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { bookingService, Booking } from '@/services/bookingService';
+import { bookingService, Booking, PaymentInfo } from '@/services/bookingService';
 import { fieldComplexService } from '@/services/fieldComplexService';
 import api from '@/lib/axios';
 import { useAuth } from '@/hooks/useAuth';
@@ -69,7 +69,7 @@ const MyBookings = () => {
     list.forEach(b => {
       if (b.booking_type === 'tournament' && b.tournament_id) {
         if (!tournamentMap.has(b.tournament_id)) {
-          tournamentMap.set(b.tournament_id, { name: b.tournament_name || `Gi\u1ea3i \u0111\u1ea5u #${b.tournament_id}`, bookings: [] });
+          tournamentMap.set(b.tournament_id, { name: b.tournament_name || `Giải đấu #${b.tournament_id}`, bookings: [] });
         }
         tournamentMap.get(b.tournament_id)!.bookings.push(b);
       } else {
@@ -344,6 +344,44 @@ const MyBookings = () => {
     );
   };
 
+  const getBookingStatusBadge = (booking: Booking) => {
+    // Hiển thị status của booking trước
+    if (booking.status === 'pending') {
+      return (
+        <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 border">
+          <Clock className="w-3 h-3 mr-1" />
+          ⏳ Chờ xác nhận
+        </Badge>
+      );
+    }
+    
+    if (booking.status === 'confirmed') {
+      // Nếu đã xác nhận, mới hiển thị payment_status
+      return getPaymentStatusBadge(booking.payment_status);
+    }
+    
+    if (booking.status === 'cancelled') {
+      return (
+        <Badge className="bg-red-100 text-red-800 border-red-300 border">
+          <XCircle className="w-3 h-3 mr-1" />
+          Đã hủy
+        </Badge>
+      );
+    }
+    
+    if (booking.status === 'completed') {
+      return (
+        <Badge className="bg-green-100 text-green-800 border-green-300 border">
+          <CheckCircle2 className="w-3 h-3 mr-1" />
+          Hoàn thành
+        </Badge>
+      );
+    }
+    
+    // Default
+    return getPaymentStatusBadge(booking.payment_status);
+  };
+
   const filterBookings = (paymentStatus?: string) => {
     if (!paymentStatus) return bookings;
     return bookings.filter(b => b.payment_status === paymentStatus);
@@ -360,26 +398,46 @@ const MyBookings = () => {
     return bookingDateTime > new Date();
   };
 
+  // ...existing code...
+  const [showOnlinePayment, setShowOnlinePayment] = useState(false);
+  const [onlinePaymentBooking, setOnlinePaymentBooking] = useState<Booking | null>(null);
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
+  const [loadingPaymentInfo, setLoadingPaymentInfo] = useState(false);
+  const [showQRZoom, setShowQRZoom] = useState(false);
+
+  const handleOpenOnlinePayment = async (booking: Booking) => {
+    setOnlinePaymentBooking(booking);
+    setShowOnlinePayment(true);
+    setLoadingPaymentInfo(true);
+    
+    try {
+      const result = await bookingService.getPaymentInfo(booking.id);
+      if (result.success && result.data) {
+        setPaymentInfo(result.data);
+      } else {
+        toast({
+          title: 'Lỗi',
+          description: result.error || 'Không thể tải thông tin thanh toán',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Lỗi',
+        description: 'Có lỗi xảy ra khi tải thông tin thanh toán',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingPaymentInfo(false);
+    }
+  };
+
   const renderBookingCard = (booking: Booking) => {
     const bookingDateTime = new Date(booking.booking_date + 'T' + booking.start_time);
     const isPast = bookingDateTime < new Date();
 
-    // Debug payment info
-    console.log('🔍 Booking #' + booking.id + ' payment info:', {
-      payment_method: booking.payment_method,
-      payment_status: booking.payment_status,
-      status: booking.status,
-      payment_proof_url: booking.payment_proof_url
-    });
-
-    // Check if should show upload button - RELAXED CONDITIONS FOR DEBUG
-    const shouldShowUpload = booking.payment_method === 'transfer' && 
-      (!booking.payment_status || booking.payment_status !== 'paid');
-    
-    console.log('🔍 Booking #' + booking.id + ' shouldShowUpload:', shouldShowUpload);
-
     return (
-      <Card key={booking.id} className={`hover:shadow-lg transition-shadow ${isPast ? 'opacity-75' : ''}`}>
+      <Card key={booking.id} className={`hover:shadow-lg transition-shadow flex flex-col justify-between ${isPast ? 'opacity-75' : ''}`}>
         <CardHeader>
           <div className="flex justify-between items-start">
             <div className="flex-1">
@@ -391,11 +449,11 @@ const MyBookings = () => {
                 Đặt lúc: {booking.created_at ? format(new Date(booking.created_at), 'dd/MM/yyyy HH:mm', { locale: vi }) : 'N/A'}
               </CardDescription>
             </div>
-            {getPaymentStatusBadge(booking.payment_status)}
+            {getBookingStatusBadge(booking)}
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 flex-1">
           {/* Date & Time */}
           <div className="grid grid-cols-2 gap-4">
             <div className="flex items-start gap-2">
@@ -435,20 +493,31 @@ const MyBookings = () => {
             </span>
           </div>
 
-          {/* Payment Info */}
+          {/* Payment Info - Hiển thị phương thức thanh toán đã chọn lúc đặt sân */}
           {booking.payment_method && (
-            <div className="space-y-2 pt-2 border-t">
+            <div className="space-y-3 pt-3 border-t">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Phương thức thanh toán:</span>
-                <Badge variant="outline" className="font-medium">
+                <Badge variant="outline" className="font-semibold text-primary">
                   {booking.payment_method === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
                 </Badge>
               </div>
-              
+
+              {/* Ghi chú cho cả hai phương thức */}
+              <Alert className="bg-blue-50 border-blue-200">
+                <AlertCircle className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-sm text-blue-800">
+                  {booking.payment_method === 'transfer' 
+                    ? 'Khách hàng có thể thanh toán trực tuyến tại đây hoặc đến thanh toán trực tiếp tại sân.'
+                    : 'Khách hàng có thể đến thanh toán trực tiếp tại sân, dù chọn tiền mặt hay chuyển khoản.'
+                  }
+                </AlertDescription>
+              </Alert>
+
               {booking.payment_method === 'transfer' && (
                 <>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Trạng thái thanh toán:</span>
+                    <span className="text-muted-foreground">Trạng thái:</span>
                     <Badge 
                       variant={booking.payment_status === 'paid' ? 'default' : 'secondary'}
                       className={booking.payment_status === 'paid' ? 'bg-green-100 text-green-800' : ''}
@@ -456,8 +525,7 @@ const MyBookings = () => {
                       {booking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ xác nhận'}
                     </Badge>
                   </div>
-                  
-                  {/* Message cho thanh toán đã upload bill hoặc đã xác nhận */}
+
                   {booking.payment_proof_url && (
                     <Alert className={booking.payment_status === 'paid' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}>
                       <CheckCircle2 className={booking.payment_status === 'paid' ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-blue-600'} />
@@ -469,17 +537,37 @@ const MyBookings = () => {
                       </AlertDescription>
                     </Alert>
                   )}
+
+                  {/* Nút thanh toán trực tuyến - chỉ hiện khi booking đã confirmed */}
+                  {booking.status === 'confirmed' && (!booking.payment_status || booking.payment_status !== 'paid') && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => handleOpenOnlinePayment(booking)}
+                    >
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      Thanh toán trực tuyến
+                    </Button>
+                  )}
+                  
+                  {/* Thông báo khi chưa xác nhận */}
+                  {booking.status === 'pending' && (!booking.payment_status || booking.payment_status !== 'paid') && (
+                    <Alert className="bg-yellow-50 border-yellow-200">
+                      <AlertCircle className="h-4 w-4 text-yellow-600" />
+                      <AlertDescription className="text-sm text-yellow-800">
+                        Booking đang chờ chủ sân xác nhận. Bạn có thể thanh toán sau khi được xác nhận.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </>
               )}
 
-              {/* Message cho thanh toán tiền mặt chưa xác nhận */}
-              {booking.payment_method === 'cash' && 
-               booking.payment_status !== 'paid' && 
-               !booking.payment_proof_url && (
+              {booking.payment_method === 'cash' && booking.payment_status !== 'paid' && (
                 <Alert className="bg-amber-50 border-amber-200">
                   <AlertCircle className="h-4 w-4 text-amber-600" />
                   <AlertDescription className="text-sm text-amber-800">
-                    Chủ sân sẽ liên hệ với bạn để xác nhận đặt sân và thanh toán bằng tiền mặt khi đến sân (lưu ý: hãy thêm số điện thoại vào thông tin liên hệ để chủ sân dễ dàng liên lạc).
+                    Chủ sân sẽ liên hệ với bạn để xác nhận và thanh toán bằng tiền mặt khi đến sân.
                   </AlertDescription>
                 </Alert>
               )}
@@ -488,7 +576,7 @@ const MyBookings = () => {
 
           {/* Contact Info */}
           {(booking.customer_name || booking.customer_phone) && (
-            <div className="space-y-2 pt-2 border-t">
+            <div className="space-y-2 pt-2 border-t mt-auto">
               {booking.customer_name && (
                 <p className="text-sm">
                   <span className="text-muted-foreground">Người đặt:</span>{' '}
@@ -561,21 +649,7 @@ const MyBookings = () => {
           )}
 
           {/* Actions */}
-          <div className="space-y-2">
-            {/* Upload Bill Button - RELAXED: only check payment_method and payment_status */}
-            {booking.payment_method === 'transfer' && 
-             (!booking.payment_status || booking.payment_status !== 'paid') && (
-              <Button
-                variant={booking.payment_proof_url ? "outline" : "default"}
-                size="sm"
-                className="w-full"
-                onClick={() => handleOpenUploadDialog(booking)}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                {booking.payment_proof_url ? 'Đổi chứng từ thanh toán' : 'Upload chứng từ thanh toán'}
-              </Button>
-            )}
-
+          <div className="space-y-2 mt-4 pt-2 border-t">
             {/* Cancel Button */}
             {canCancelBooking(booking) && (
               <Button
@@ -608,7 +682,6 @@ const MyBookings = () => {
     const isExpanded = expandedTournaments.has(tournamentId);
     const firstBooking = group.bookings[0];
     const totalPrice = group.bookings.reduce((s, b) => s + (Number(b.total_price) || 0), 0);
-    const isPaid = firstBooking.payment_status === 'paid';
     const dates = [...new Set(group.bookings.map(b => b.booking_date))].sort();
 
     return (
@@ -624,7 +697,7 @@ const MyBookings = () => {
                 🏆 Booking giải đấu · {group.bookings.length} lượt sân
               </CardDescription>
             </div>
-            {getPaymentStatusBadge(firstBooking.payment_status)}
+            {getBookingStatusBadge(firstBooking)}
           </div>
         </CardHeader>
 
@@ -649,12 +722,158 @@ const MyBookings = () => {
             <span className="text-lg font-bold text-purple-700">{formatCurrency(totalPrice)}</span>
           </div>
 
+          {/* Payment Info - Similar to regular booking cards */}
           {firstBooking.payment_method && (
-            <div className="flex items-center justify-between text-sm pt-1">
-              <span className="text-muted-foreground">Thanh toán:</span>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">{firstBooking.payment_method === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}</Badge>
+            <div className="space-y-3 pt-3 border-t">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Phương thức thanh toán:</span>
+                <Badge variant="outline" className="font-semibold text-primary">
+                  {firstBooking.payment_method === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
+                </Badge>
               </div>
+
+              {/* Ghi chú cho cả hai phương thức */}
+              <Alert className="bg-blue-50 border-blue-200">
+                <AlertCircle className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-sm text-blue-800">
+                  {firstBooking.payment_method === 'transfer' 
+                    ? 'Khách hàng có thể thanh toán trực tuyến tại đây hoặc đến thanh toán trực tiếp tại sân.'
+                    : 'Khách hàng có thể đến thanh toán trực tiếp tại sân, dù chọn tiền mặt hay chuyển khoản.'
+                  }
+                </AlertDescription>
+              </Alert>
+
+              {firstBooking.payment_method === 'transfer' && (
+                <>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Trạng thái:</span>
+                    <Badge 
+                      variant={firstBooking.payment_status === 'paid' ? 'default' : 'secondary'}
+                      className={firstBooking.payment_status === 'paid' ? 'bg-green-100 text-green-800' : ''}
+                    >
+                      {firstBooking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ xác nhận'}
+                    </Badge>
+                  </div>
+
+                  {firstBooking.payment_proof_url && (
+                    <Alert className={firstBooking.payment_status === 'paid' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}>
+                      <CheckCircle2 className={firstBooking.payment_status === 'paid' ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-blue-600'} />
+                      <AlertDescription className={firstBooking.payment_status === 'paid' ? 'text-sm text-green-800' : 'text-sm text-blue-800'}>
+                        {firstBooking.payment_status === 'paid' 
+                          ? 'Đã được chủ sân xác nhận thanh toán.'
+                          : 'Đã upload chứng từ. Đang chờ chủ sân xác nhận.'
+                        }
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Nút thanh toán trực tuyến - chỉ hiện khi booking đã confirmed */}
+                  {firstBooking.status === 'confirmed' && (!firstBooking.payment_status || firstBooking.payment_status !== 'paid') && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => handleOpenOnlinePayment(firstBooking)}
+                    >
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      Thanh toán trực tuyến
+                    </Button>
+                  )}
+                  
+                  {/* Thông báo khi chưa xác nhận */}
+                  {firstBooking.status === 'pending' && (!firstBooking.payment_status || firstBooking.payment_status !== 'paid') && (
+                    <Alert className="bg-yellow-50 border-yellow-200">
+                      <AlertCircle className="h-4 w-4 text-yellow-600" />
+                      <AlertDescription className="text-sm text-yellow-800">
+                        Booking đang chờ chủ sân xác nhận. Bạn có thể thanh toán sau khi được xác nhận.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </>
+              )}
+
+              {firstBooking.payment_method === 'cash' && firstBooking.payment_status !== 'paid' && (
+                <Alert className="bg-amber-50 border-amber-200">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-sm text-amber-800">
+                    Chủ sân sẽ liên hệ với bạn để xác nhận và thanh toán bằng tiền mặt khi đến sân.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
+
+          {/* Contact Info */}
+          {(firstBooking.customer_name || firstBooking.customer_phone) && (
+            <div className="space-y-2 pt-2 border-t">
+              {firstBooking.customer_name && (
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Người đặt:</span>{' '}
+                  <span className="font-medium">{firstBooking.customer_name}</span>
+                </p>
+              )}
+              {firstBooking.customer_phone && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Phone className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-muted-foreground">{firstBooking.customer_phone}</span>
+                </div>
+              )}
+              {firstBooking.customer_email && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Mail className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-muted-foreground">{firstBooking.customer_email}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Owner / Field Complex Contact Info */}
+          {fieldComplexMap[firstBooking.field_id] && (
+            <div className="space-y-2 pt-2 border-t">
+              <p className="text-sm font-semibold text-gray-700">Thông tin liên hệ chủ sân</p>
+              {fieldComplexMap[firstBooking.field_id].name && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Building2 className="w-3 h-3 text-muted-foreground" />
+                  <span className="font-medium">{fieldComplexMap[firstBooking.field_id].name}</span>
+                </div>
+              )}
+              {fieldComplexMap[firstBooking.field_id].phone && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Phone className="w-3 h-3 text-muted-foreground" />
+                  <a
+                    href={`tel:${fieldComplexMap[firstBooking.field_id].phone}`}
+                    className="text-blue-600 hover:underline"
+                  >
+                    {fieldComplexMap[firstBooking.field_id].phone}
+                  </a>
+                </div>
+              )}
+              {fieldComplexMap[firstBooking.field_id].email && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Mail className="w-3 h-3 text-muted-foreground" />
+                  <a
+                    href={`mailto:${fieldComplexMap[firstBooking.field_id].email}`}
+                    className="text-blue-600 hover:underline"
+                  >
+                    {fieldComplexMap[firstBooking.field_id].email}
+                  </a>
+                </div>
+              )}
+              {fieldComplexMap[firstBooking.field_id].address && (
+                <div className="flex items-center gap-2 text-sm">
+                  <MapPin className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-muted-foreground">{fieldComplexMap[firstBooking.field_id].address}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Note */}
+          {firstBooking.note && (
+            <div className="p-3 bg-muted/50 rounded-lg">
+              <p className="text-sm">
+                <span className="font-medium">Ghi chú:</span> {firstBooking.note}
+              </p>
             </div>
           )}
 
@@ -946,6 +1165,170 @@ const MyBookings = () => {
                 Bạn sẽ nhận được thông báo khi booking được xác nhận.
               </AlertDescription>
             </Alert>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Online Payment Modal */}
+      <Dialog open={showOnlinePayment} onOpenChange={setShowOnlinePayment}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-primary" />
+              Thanh toán trực tuyến
+            </DialogTitle>
+            <DialogDescription>
+              Chuyển khoản qua QR code bên dưới và upload chứng từ thanh toán.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {loadingPaymentInfo ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {onlinePaymentBooking && (
+                <Alert>
+                  <AlertDescription className="text-sm">
+                    <strong>Booking #{onlinePaymentBooking.id}</strong>
+                    <br />
+                    Số tiền: <strong className="text-primary">{formatCurrency(onlinePaymentBooking.total_price)}</strong>
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {/* QR code */}
+              {paymentInfo?.qr_code_url ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Label>Quét mã QR để chuyển khoản</Label>
+                  <div 
+                    className="border rounded-lg p-2 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => setShowQRZoom(true)}
+                    title="Click để phóng to"
+                  >
+                    <img 
+                      src={paymentInfo.qr_code_url} 
+                      alt="QR Code" 
+                      className="w-64 h-64 object-contain"
+                    />
+                  </div>
+                  <p className="text-xs text-blue-600 font-medium">Click vào QR để phóng to</p>
+                  {paymentInfo.transfer_note && (
+                    <p className="text-xs text-muted-foreground">
+                      Nội dung chuyển khoản: <span className="font-semibold">{paymentInfo.transfer_note}</span>
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <Label>Quét mã QR để chuyển khoản</Label>
+                  <div className="border rounded-lg p-2 bg-muted/30 flex items-center justify-center">
+                    <ImageIcon className="w-32 h-32 text-muted-foreground" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Nội dung chuyển khoản: <span className="font-semibold">BOOKING{onlinePaymentBooking?.id}</span>
+                  </p>
+                </div>
+              )}
+              
+              {/* Instruction */}
+              {paymentInfo?.instruction && (
+                <Alert className="bg-blue-50 border-blue-200">
+                  <AlertCircle className="h-4 w-4 text-blue-600" />
+                  <AlertDescription className="text-xs text-blue-800">
+                    {paymentInfo.instruction}
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {/* Owner contact info */}
+              {paymentInfo?.owner_contact && (
+                <div className="space-y-2 pt-2 border-t">
+                  <p className="text-sm font-semibold text-gray-700">Thông tin chủ sân</p>
+                  {paymentInfo.owner_contact.name && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Building2 className="w-3 h-3 text-muted-foreground" />
+                      <span className="font-medium">{paymentInfo.owner_contact.name}</span>
+                    </div>
+                  )}
+                  {paymentInfo.owner_contact.phone && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Phone className="w-3 h-3 text-muted-foreground" />
+                      <a
+                        href={`tel:${paymentInfo.owner_contact.phone}`}
+                        className="text-blue-600 hover:underline"
+                      >
+                        {paymentInfo.owner_contact.phone}
+                      </a>
+                    </div>
+                  )}
+                  {paymentInfo.owner_contact.address && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <MapPin className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">{paymentInfo.owner_contact.address}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Upload button */}
+              <Alert className="bg-yellow-50 border-yellow-200">
+                <AlertCircle className="h-4 w-4 text-yellow-600" />
+                <AlertDescription className="text-xs text-yellow-800">
+                  Sau khi chuyển khoản, vui lòng upload ảnh chứng từ để chủ sân xác nhận thanh toán.
+                </AlertDescription>
+              </Alert>
+              <Button
+                className="w-full"
+                onClick={() => {
+                  setShowOnlinePayment(false);
+                  if (onlinePaymentBooking) handleOpenUploadDialog(onlinePaymentBooking);
+                }}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Upload chứng từ thanh toán
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Code Zoom Modal */}
+      <Dialog open={showQRZoom} onOpenChange={setShowQRZoom}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Mã QR thanh toán</DialogTitle>
+            <DialogDescription>
+              Quét mã QR này để chuyển khoản
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 p-4">
+            {paymentInfo?.qr_code_url && (
+              <img 
+                src={paymentInfo.qr_code_url} 
+                alt="QR Code" 
+                className="w-full max-w-lg h-auto object-contain"
+              />
+            )}
+            {paymentInfo?.transfer_note && (
+              <Alert>
+                <AlertDescription className="text-center">
+                  <strong>Nội dung chuyển khoản:</strong>
+                  <br />
+                  <span className="text-lg font-bold text-primary">{paymentInfo.transfer_note}</span>
+                </AlertDescription>
+              </Alert>
+            )}
+            {onlinePaymentBooking && (
+              <Alert>
+                <AlertDescription className="text-center">
+                  <strong>Số tiền:</strong>
+                  <br />
+                  <span className="text-xl font-bold text-primary">{formatCurrency(onlinePaymentBooking.total_price)}</span>
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
         </DialogContent>
       </Dialog>

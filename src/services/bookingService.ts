@@ -95,12 +95,28 @@ export interface BookingRequest {
   start_time: string;
   end_time: string;
   total_price: number;
-  payment_method?: 'transfer' | 'cash';
+  payment_method: 'transfer' | 'cash';
   status?: string;
   customer_name?: string;
   customer_phone?: string;
   customer_email?: string;
   note?: string;
+}
+
+// Interface for payment info
+export interface PaymentInfo {
+  booking_id: number;
+  status: string;
+  payment_method: string;
+  total_price: number;
+  qr_code_url?: string;
+  instruction?: string;
+  transfer_note?: string;
+  owner_contact?: {
+    name: string;
+    phone: string;
+    address: string;
+  };
 }
 
 export const bookingService = {
@@ -179,7 +195,7 @@ export const bookingService = {
         start_time: formatTime(data.start_time),
         end_time: formatTime(data.end_time),
         total_price: data.total_price,
-        payment_method: data.payment_method || 'transfer',
+        payment_method: data.payment_method,
         status: data.status || 'pending',
         customer_name: data.customer_name,
         customer_phone: data.customer_phone,
@@ -412,6 +428,28 @@ export const bookingService = {
       return {
         success: false,
         error: error.response?.data?.message || 'Không thể upload chứng từ thanh toán',
+      };
+    }
+  },
+
+  // Get payment info for online payment
+  getPaymentInfo: async (bookingId: number): Promise<{ success: boolean; data?: PaymentInfo; error?: string }> => {
+    try {
+      console.log('📡 Fetching payment info for booking:', bookingId);
+      const response = await api.get(`/books/${bookingId}/payment-info`);
+      console.log('✅ Payment info response:', response.data);
+      
+      return {
+        success: true,
+        data: response.data?.data || response.data,
+      };
+    } catch (error: any) {
+      console.error('❌ Error fetching payment info:', error);
+      console.error('❌ Error response:', error.response?.data);
+      
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Không thể tải thông tin thanh toán',
       };
     }
   },

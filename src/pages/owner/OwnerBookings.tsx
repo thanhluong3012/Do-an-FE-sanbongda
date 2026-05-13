@@ -19,6 +19,7 @@ import { fieldComplexService, FieldComplex } from '@/services/fieldComplexServic
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useBookingRealtimeSync, SyncMessage } from '@/hooks/useRealtimeSync';
+import { paymentService } from '@/services/paymentService';
 
 const OwnerBookings = () => {
   const { toast } = useToast();
@@ -49,7 +50,7 @@ const OwnerBookings = () => {
       if (b.booking_type === 'tournament' && b.tournament_id) {
         const key = b.tournament_id;
         if (!tournamentMap.has(key)) {
-          tournamentMap.set(key, { name: b.tournament_name || `Gi\u1ea3i \u0111\u1ea5u #${key}`, bookings: [] });
+          tournamentMap.set(key, { name: b.tournament_name || `Giải đấu #${key}`, bookings: [] });
         }
         tournamentMap.get(key)!.bookings.push(b);
       } else {
@@ -59,6 +60,69 @@ const OwnerBookings = () => {
 
     return { regular, tournaments: tournamentMap };
   };
+
+  const handleConfirmBooking = async (bookingId: number, data: { action: 'approve' | 'reject' }) => {
+    console.log(`Attempting to ${data.action} booking ID ${bookingId}...`);
+    const result = await paymentService.confirmBooking(bookingId, data);
+    if (result.success) { 
+      toast({
+        title: 'Thành công',
+        description: result.message,
+      });
+      loadBookings(); // Reload bookings after confirming
+    } else {
+      toast({
+        title: 'Lỗi', 
+        description: result.error,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Handle confirm/reject all bookings in a tournament
+  const handleConfirmAllTournamentBookings = async (bookings: Booking[], action: 'approve' | 'reject') => {
+    const pendingBookings = bookings.filter(b => b.status === 'pending');
+    if (pendingBookings.length === 0) {
+      toast({
+        title: 'Thông báo',
+        description: 'Không có booking nào cần xử lý',
+        variant: 'default',
+      });
+      return;
+    }
+
+    try {
+      // Call API for each pending booking
+      const promises = pendingBookings.map(b => 
+        paymentService.confirmBooking(b.id, { action })
+      );
+      const results = await Promise.all(promises);
+      
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.length - successCount;
+
+      if (successCount > 0) {
+        toast({
+          title: 'Thành công',
+          description: `Đã ${action === 'approve' ? 'duyệt' : 'từ chối'} ${successCount}/${results.length} booking${failCount > 0 ? ` (${failCount} thất bại)` : ''}`,
+        });
+        loadBookings();
+      } else {
+        toast({
+          title: 'Lỗi',
+          description: 'Không thể xử lý bookings',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Lỗi',
+        description: 'Có lỗi xảy ra khi xử lý',
+        variant: 'destructive',
+      });
+    }
+  };  
+      
 
   useEffect(() => {
     const init = async () => {
@@ -144,9 +208,28 @@ const OwnerBookings = () => {
       if (selectedPaymentStatus !== 'all') {
         filteredBookings = filteredBookings.filter(b => b.payment_status === selectedPaymentStatus);
       }
+
+      // Sort newest first: created_at desc, fallback booking_date+start_time, then id desc
+      const sortedBookings = [...filteredBookings].sort((a, b) => {
+        const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0;
+
+        if (aCreated !== bCreated) return bCreated - aCreated;
+
+        const aSchedule = a.booking_date
+          ? new Date(`${a.booking_date}T${a.start_time || '00:00:00'}`).getTime()
+          : 0;
+        const bSchedule = b.booking_date
+          ? new Date(`${b.booking_date}T${b.start_time || '00:00:00'}`).getTime()
+          : 0;
+
+        if (aSchedule !== bSchedule) return bSchedule - aSchedule;
+
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
+      });
       
-      console.log('✅ Filtered bookings:', filteredBookings);
-      setBookings(filteredBookings);
+      console.log('✅ Filtered bookings:', sortedBookings);
+      setBookings(sortedBookings);
     } catch (error) {
       console.error('Error loading bookings:', error);
       toast({
@@ -159,23 +242,26 @@ const OwnerBookings = () => {
     }
   };
 
+  const getPaymentMethodBadge = (paymentMethod?: string) => {
+    if (paymentMethod === 'cash') {
+      return (
+        <Badge variant="outline" className="gap-1 border-green-300 text-green-700 bg-green-50">
+          <DollarSign className="w-3 h-3" />
+          Tiền mặt
+        </Badge>
+      );
+    }
 
+    if (paymentMethod === 'transfer' || paymentMethod === 'banking') {
+      return (
+        <Badge variant="outline" className="gap-1 border-blue-300 text-blue-700 bg-blue-50">
+          <Clock className="w-3 h-3" />
+          Chuyển khoản
+        </Badge>
+      );
+    }
 
-  const getPaymentStatusBadge = (paymentStatus?: string) => {
-    const statusConfig = {
-      pending: { label: 'Chờ thanh toán', variant: 'secondary' as const, icon: Clock },
-      paid: { label: 'Đã thanh toán', variant: 'default' as const, icon: CheckCircle },
-      failed: { label: 'Thất bại', variant: 'destructive' as const, icon: XCircle },
-      refunded: { label: 'Hoàn tiền', variant: 'outline' as const, icon: DollarSign },
-    };
-    const config = statusConfig[paymentStatus as keyof typeof statusConfig] || statusConfig.pending;
-    const Icon = config.icon;
-    return (
-      <Badge variant={config.variant} className="gap-1">
-        <Icon className="w-3 h-3" />
-        {config.label}
-      </Badge>
-    );
+    return <span className="text-xs text-gray-500">Chưa chọn</span>;
   };
 
   const getFieldInfo = (fieldId: number) => {
@@ -362,6 +448,7 @@ const OwnerBookings = () => {
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Khách hàng</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Giá</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Thanh toán</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Trạng thái</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -375,6 +462,17 @@ const OwnerBookings = () => {
                         const firstBooking = group.bookings[0];
                         const isExpanded = expandedTournaments.has(tournamentId);
                         const dates = [...new Set(group.bookings.map(b => b.booking_date))].sort();
+                        
+                        // Calculate overall status
+                        const confirmedCount = group.bookings.filter(b => b.status === 'confirmed').length;
+                        const completedCount = group.bookings.filter(b => b.status === 'completed').length;
+                        const cancelledCount = group.bookings.filter(b => b.status === 'cancelled').length;
+                        const pendingCount = group.bookings.filter(b => b.status === 'pending').length;
+                        const totalCount = group.bookings.length;
+                        const allConfirmed = confirmedCount === totalCount;
+                        const allCompleted = completedCount === totalCount;
+                        const allCancelled = cancelledCount === totalCount;
+                        const allPending = pendingCount === totalCount;
 
                         rows.push(
                           <tr
@@ -426,9 +524,88 @@ const OwnerBookings = () => {
                             </td>
                             <td className="px-2 py-2">
                               <div className="flex items-center gap-1">
-                                {getPaymentStatusBadge(firstBooking.payment_status)}
+                                {getPaymentMethodBadge(firstBooking.payment_method)}
                                 {isExpanded ? <ChevronUp className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />}
                               </div>
+                            </td>
+                            <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                              {/* Trạng thái tổng hợp của booking giải đấu */}
+                              {allCompleted ? (
+                                <Badge className="gap-1 bg-blue-500 hover:bg-blue-600 text-white font-medium text-[10px]">
+                                  <CheckCircle className="w-3 h-3" />
+                                  Hoàn thành
+                                </Badge>
+                              ) : allConfirmed ? (
+                                <Badge className="gap-1 bg-green-500 hover:bg-green-600 text-white font-medium text-[10px]">
+                                  <CheckCircle className="w-3 h-3" />
+                                  Đã duyệt tất cả
+                                </Badge>
+                              ) : allCancelled ? (
+                                <Badge variant="destructive" className="gap-1 font-medium text-[10px]">
+                                  <XCircle className="w-3 h-3" />
+                                  Đã từ chối
+                                </Badge>
+                              ) : allPending ? (
+                                <div className="flex gap-1">
+                                  <Button 
+                                    size="sm" 
+                                    variant="default" 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleConfirmAllTournamentBookings(group.bookings, 'approve');
+                                    }}
+                                    className="h-7 px-2 text-[10px] bg-green-600 hover:bg-green-700 text-white"
+                                  >
+                                    <CheckCircle className="w-3 h-3 mr-0.5" />
+                                    Duyệt tất cả
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="destructive" 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleConfirmAllTournamentBookings(group.bookings, 'reject');
+                                    }}
+                                    className="h-7 px-2 text-[10px]"
+                                  >
+                                    <XCircle className="w-3 h-3 mr-0.5" />
+                                    Từ chối
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="text-[10px] space-y-0.5">
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    {completedCount > 0 && (
+                                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 text-[9px] px-1">
+                                        {completedCount} hoàn thành
+                                      </Badge>
+                                    )}
+                                    {confirmedCount > 0 && (
+                                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 text-[9px] px-1">
+                                        {confirmedCount} duyệt
+                                      </Badge>
+                                    )}
+                                    {cancelledCount > 0 && (
+                                      <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 text-[9px] px-1">
+                                        {cancelledCount} từ chối
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {pendingCount > 0 && (
+                                    <Button 
+                                      size="sm" 
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleConfirmAllTournamentBookings(group.bookings, 'approve');
+                                      }}
+                                      className="h-6 px-1.5 text-[9px] border-green-200 text-green-600 hover:bg-green-50 w-full"
+                                    >
+                                      Duyệt {pendingCount} còn lại
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
                             </td>
                           </tr>
                         );
@@ -467,7 +644,48 @@ const OwnerBookings = () => {
                                   <div className="text-xs text-gray-500">{formatCurrency(b.total_price)}</div>
                                 </td>
                                 <td className="px-2 py-1.5">
-                                  {getPaymentStatusBadge(b.payment_status)}
+                                  {getPaymentMethodBadge(b.payment_method)}
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <div className="flex flex-col gap-1.5">
+                                    {b.status === 'pending' ? (
+                                      <div className="flex gap-1 mt-1">
+                                        <Button 
+                                          size="sm" 
+                                          variant="default" 
+                                          onClick={() => handleConfirmBooking(b.id, { action: 'approve' })}
+                                          className="h-7 px-2 text-[10px] bg-green-600 hover:bg-green-700 text-white"
+                                        >
+                                          <CheckCircle className="w-3 h-3 mr-0.5" />
+                                          xác nhận
+                                        </Button>
+                                        <Button 
+                                          size="sm" 
+                                          variant="destructive" 
+                                          onClick={() => handleConfirmBooking(b.id, { action: 'reject' })}
+                                          className="h-7 px-2 text-[10px]"
+                                        >
+                                          <XCircle className="w-3 h-3 mr-0.5" />
+                                          Từ chối
+                                        </Button>
+                                      </div>
+                                    ) : b.status === 'completed' ? (
+                                      <Badge className="gap-1 bg-blue-500 hover:bg-blue-600 text-white font-medium text-[10px]">
+                                        <CheckCircle className="w-3 h-3" />
+                                        Hoàn thành
+                                      </Badge>
+                                    ) : b.status === 'confirmed' ? (
+                                      <Badge className="gap-1 bg-green-500 hover:bg-green-600 text-white font-medium text-[10px]">
+                                        <CheckCircle className="w-3 h-3" />
+                                        Đã xác nhận
+                                      </Badge>
+                                    ) : b.status === 'cancelled' ? (
+                                      <Badge variant="destructive" className="gap-1 font-medium text-[10px]">
+                                        <XCircle className="w-3 h-3" />
+                                        Đã từ chối
+                                      </Badge>
+                                    ) : null}
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -523,7 +741,54 @@ const OwnerBookings = () => {
                               <div className="font-medium text-gray-900 text-xs">{formatCurrency(booking.total_price)}</div>
                             </td>
                             <td className="px-2 py-2">
-                              {getPaymentStatusBadge(booking.payment_status)}
+                              {getPaymentMethodBadge(booking.payment_method)}
+                            </td>
+                            <td className="px-2 py-2">
+                              <div className="flex flex-col gap-2">
+                                {/* Hiện nút nếu đang pending, ngược lại thì hiện Badge text */}
+                                {booking.payment_status === 'pending' && booking.status !== 'confirmed' ? (
+                                  <div className="flex gap-1 mt-1">
+                                    <Button 
+                                      size="sm" 
+                                      variant="default" 
+                                      onClick={() => handleConfirmBooking(booking.id, { action: 'approve' })}
+                                      className="h-8 px-2.5 text-xs bg-green-600 hover:bg-green-700"
+                                    >
+                                      <CheckCircle className="w-3 h-3 mr-1" />
+                                      Xác nhận 
+                                    </Button>
+                                    <Button 
+                                      size="sm" 
+                                      variant="destructive" 
+                                      onClick={() => handleConfirmBooking(booking.id, { action: 'reject' })}
+                                      className="h-8 px-2.5 text-xs"
+                                    >
+                                      <XCircle className="w-3 h-3 mr-1" />
+                                      Từ chối
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  /* Hiển thị Text/Badge khi booking đã được xử lý */
+                                  <div className="mt-1">
+                                    {booking.status === 'completed' ? (
+                                      <Badge className="gap-1 bg-blue-500 hover:bg-blue-600 text-white font-medium text-[10px]">
+                                        <CheckCircle className="w-3 h-3" />
+                                        Hoàn thành
+                                      </Badge>
+                                    ) : booking.status === 'confirmed' ? (
+                                      <Badge className="gap-1 bg-green-500 hover:bg-green-600 text-white font-medium text-[10px]">
+                                        <CheckCircle className="w-3 h-3" />
+                                        Đã xác nhận 
+                                      </Badge>
+                                    ) : booking.status === 'cancelled' ? (
+                                      <Badge variant="destructive" className="gap-1 font-medium text-[10px]">
+                                        <XCircle className="w-3 h-3" />
+                                        Đã từ chối 
+                                      </Badge>
+                                    ) : null}
+                                  </div>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );

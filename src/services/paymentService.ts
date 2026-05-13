@@ -192,4 +192,46 @@ export const paymentService = {
       return null;
     }
   },
+
+
+  // Owner/Staff xác nhận hoặc từ chối đặt sân
+  confirmBooking: async (
+    id: number,
+    data: {
+      action: 'confirmed' | 'rejected' | 'approve' | 'reject';
+      note?: string
+    }
+  ): Promise<any> => {
+    try {
+      const response = await api.post(`/books/${id}/confirm-booking`, data)
+
+      return response.data
+    } catch (error: any) {
+      console.error('Error confirming booking:', error)
+
+      throw error?.response?.data || {
+        message: 'Không thể xác nhận đặt sân'
+      }
+    }
+  },
+
+  // User chọn phương thức thanh toán sau khi owner xác nhận
+  selectPaymentMethod: async (
+    id: number,
+    data: {
+      payment_method: 'cash' | 'banking'
+    }
+  ): Promise<any> => {
+    try {
+      const response = await api.post(`/books/${id}/select-payment-method`, data)
+
+      return response.data
+    } catch (error: any) {
+      console.error('Error selecting payment method:', error)
+
+      throw error?.response?.data || {
+        message: 'Không thể chọn phương thức thanh toán'
+      }
+    }
+  },
 };

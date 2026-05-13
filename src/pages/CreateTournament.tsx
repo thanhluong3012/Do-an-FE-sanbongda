@@ -95,9 +95,6 @@ export default function CreateTournament() {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('cash');
   const [totalPrice, setTotalPrice] = useState(0);
   const [sessionPrices, setSessionPrices] = useState<TournamentSessionPrice[]>([]);
-  const [ownerQRCode, setOwnerQRCode] = useState<string | null>(null);
-  const [paymentProofUrl, setPaymentProofUrl] = useState<string | null>(null);
-  const [createdTournamentId, setCreatedTournamentId] = useState<number | null>(null);
 
   // Rules file states
   const [rulesFile, setRulesFile] = useState<File | null>(null);
@@ -130,7 +127,6 @@ export default function CreateTournament() {
   useEffect(() => {
     if (formData.field_cluster_id) {
       loadSessionPrices(formData.field_cluster_id);
-      loadOwnerQRCode(formData.field_cluster_id);
     }
   }, [formData.field_cluster_id]);
 
@@ -155,61 +151,6 @@ export default function CreateTournament() {
     } catch (error) {
       console.error('Error loading session prices:', error);
       setSessionPrices([]);
-    }
-  };
-
-  const loadOwnerQRCode = async (clusterId: number) => {
-    try {
-      // Load field cluster detail để lấy owner info
-      const cluster = await fieldComplexService.getById(clusterId);
-      console.log('🔍 Field Cluster Data:', cluster);
-      console.log('🔍 Owner Data:', cluster?.owner);
-      console.log('🔍 Owner ID:', cluster?.owner_id);
-      
-      // Check nếu cluster có owner relationship
-      if (cluster?.owner) {
-        // Trường hợp 1: Backend đã include owner (RECOMMENDED)
-        const qrCode = cluster.owner.qr_code_image 
-                    || cluster.owner.qr_code_url 
-                    || cluster.owner.qr_image;
-        
-        if (qrCode) {
-          console.log('✅ QR Code found from owner relationship:', qrCode);
-          setOwnerQRCode(qrCode);
-        } else {
-          console.log('❌ Owner chưa upload QR code');
-          setOwnerQRCode(null);
-        }
-      } else if (cluster?.owner_id) {
-        // Trường hợp 2: Backend chưa include owner, workaround bằng gọi API riêng
-        console.log('⚠️ Backend không trả owner relationship, đang gọi API riêng...');
-        try {
-          const ownerResponse = await getOwner(cluster.owner_id);
-          console.log('🔍 Owner fetched separately:', ownerResponse);
-          const owner = ownerResponse?.data || ownerResponse;
-          
-          const qrCode = owner?.qr_code_image 
-                      || owner?.qr_code_url 
-                      || owner?.qr_image;
-          
-          if (qrCode) {
-            console.log('✅ QR Code found from separate API:', qrCode);
-            setOwnerQRCode(qrCode);
-          } else {
-            console.log('❌ Owner chưa upload QR code');
-            setOwnerQRCode(null);
-          }
-        } catch (ownerError) {
-          console.error('Error fetching owner separately:', ownerError);
-          setOwnerQRCode(null);
-        }
-      } else {
-        console.log('❌ Không có owner_id trong cluster data');
-        setOwnerQRCode(null);
-      }
-    } catch (error) {
-      console.error('Error loading owner QR code:', error);
-      setOwnerQRCode(null);
     }
   };
 
@@ -616,15 +557,7 @@ export default function CreateTournament() {
         return true;
       
       case 5:
-        // Validate payment method
-        if (paymentMethod === 'transfer' && !paymentProofUrl) {
-          toast({
-            title: 'Thiếu thông tin',
-            description: 'Vui lòng upload bill chuyển khoản',
-            variant: 'destructive',
-          });
-          return false;
-        }
+        // Step 5 just selects payment method, no validation needed
         return true;
       
       default:
@@ -644,17 +577,7 @@ export default function CreateTournament() {
 
   const handleSubmit = async () => {
     // Validate all steps before submitting
-    if (!validateStep(1) || !validateStep(2) || !validateStep(3) || !validateStep(4)) return;
-
-    // Validate payment
-    if (paymentMethod === 'transfer' && !paymentProofUrl) {
-      toast({
-        title: 'Lỗi',
-        description: 'Vui lòng upload bill chuyển khoản',
-        variant: 'destructive',
-      });
-      return;
-    }
+    if (!validateStep(1) || !validateStep(2) || !validateStep(3) || !validateStep(4) || !validateStep(5)) return;
 
     // Build bookings data - Backend expects 'date' and 'session_type' (not 'time_slot')
     const bookingsData = selectedBookings.map(b => ({
@@ -663,20 +586,21 @@ export default function CreateTournament() {
       session_type: b.time_slot_id as 'morning' | 'afternoon' | 'evening' | 'full_day',
     }));
 
-    // Build payload
+    // Build payload - INCLUDE bookings in create (giải được tạo cùng với bookings luôn)
     const payload = {
       ...formData,
-      bookings: bookingsData,
+      bookings: bookingsData, // Send bookings here - backend creates tournament + bookings with status=pending
       payment_method: paymentMethod,
     };
 
-    console.log('📤 Payload gửi lên backend:', JSON.stringify(payload, null, 2));
+    console.log('📤 Payload tạo giải (bao gồm bookings):', JSON.stringify(payload, null, 2));
 
     setIsSubmitting(true);
     try {
+      // Create tournament WITH bookings - backend creates everything at once
       const createdTournament = await tournamentService.create(payload);
-      console.log('✅ Tournament created successfully:', createdTournament);
-      const tournamentId = createdTournament.tournament?.id;
+      console.log('✅ Tournament + bookings created successfully:', createdTournament);
+      const tournamentId = createdTournament.tournament?.id || createdTournament.id;
       console.log('Tournament ID:', tournamentId);
       
       if (!tournamentId) {
@@ -690,45 +614,8 @@ export default function CreateTournament() {
         return;
       }
 
-      debugger;
-
-      // Bước 2: Gửi URL bill chuyển khoản lên BE (endpoint riêng)
-      if (paymentMethod === 'transfer' && paymentProofUrl) {
-        try {
-          tournamentService.uploadPaymentProofTournaments(tournamentId, paymentProofUrl);
-          const books: any[] = createdTournament.bookings || [];
-          console.log('📋 Bookings to upload proof:', books.map((b: any) => b.id));
-          await Promise.all(
-            books.map((book: any) =>
-              tournamentService.uploadPaymentProof(book.id, paymentProofUrl)
-            )
-          );
-          console.log('✅ Payment proof URL sent to BE');
-        } catch (proofError) {
-          console.error('Error sending payment proof:', proofError);
-          toast({
-            title: 'Cảnh báo',
-            description: 'Tạo giải thành công nhưng không thể gửi bill thanh toán. Vui lòng thử lại trong trang chi tiết giải.',
-            variant: 'default',
-          });
-        }
-      }
-
-      // Success message based on payment method
-      if (paymentMethod === 'transfer') {
-        toast({
-          title: '🎉 Tạo giải đấu thành công!',
-          description: `Giải đấu "${payload.name}" đã được tạo và bill chuyển khoản đã được gửi. Đang chờ chủ sân xác nhận thanh toán. Bạn sẽ nhận được thông báo khi thanh toán được xác nhận.`,
-        });
-      } else {
-        toast({
-          title: '🎉 Tạo giải đấu thành công!',
-          description: `Giải đấu "${payload.name}" đã được tạo. Vui lòng liên hệ chủ sân để thanh toán tiền mặt. Sau khi chủ sân xác nhận thanh toán, bạn có thể mở đăng ký giải.`,
-        });
-      }
-
       // Upload rules file if provided
-      if (rulesFile && tournamentId) {
+      if (rulesFile) {
         try {
           await tournamentService.uploadRulesFile(tournamentId, rulesFile);
           console.log('✅ Rules file uploaded successfully');
@@ -741,8 +628,14 @@ export default function CreateTournament() {
           });
         }
       }
+
+      // Success message
+      toast({
+        title: '🎉 Tạo giải đấu thành công!',
+        description: `Giải đấu "${formData.name}" đã được tạo với ${bookingsData.length} lượt đặt sân (status = pending). Chủ sân sẽ xem và xác nhận booking.`,
+      });
       
-      // Navigate đến tournament detail thay vì my-tournaments
+      // Navigate to tournament detail
       navigate(`/tournament/${tournamentId}`);
     } catch (error: any) {
       // Log chi tiết lỗi để debug
@@ -1418,198 +1311,147 @@ export default function CreateTournament() {
     </Card>
   );
 
-  const renderStep5 = () => {
-
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="w-6 h-6" />
-            Bước 5: Thanh toán
-          </CardTitle>
-          <CardDescription>
-            Chọn phương thức thanh toán cho đặt sân
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Total Price Display */}
-          <div className="bg-primary/10 border-2 border-primary/20 rounded-lg p-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Tổng chi phí đặt sân</p>
-                <p className="text-3xl font-bold text-primary">
-                  {formatVND(totalPrice)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {selectedBookings.length} lượt đặt sân
-                </p>
-              </div>
-              <Wallet className="w-16 h-16 text-primary/30" />
+  const renderStep5 = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <DollarSign className="w-6 h-6" />
+          Bước 5: Phương thức thanh toán
+        </CardTitle>
+        <CardDescription>
+          Chọn phương thức thanh toán cho đặt sân (bạn sẽ thanh toán sau khi chủ sân xác nhận)
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Total Price Display */}
+        <div className="bg-primary/10 border-2 border-primary/20 rounded-lg p-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Tổng chi phí đặt sân</p>
+              <p className="text-3xl font-bold text-primary">
+                {formatVND(totalPrice)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {selectedBookings.length} lượt đặt sân
+              </p>
             </div>
+            <Wallet className="w-16 h-16 text-primary/30" />
           </div>
+        </div>
 
-          {/* Payment Method Selection */}
-          <div className="space-y-4">
-            <Label className="text-base font-semibold">Phương thức thanh toán</Label>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Cash Payment */}
-              <div
-                onClick={() => setPaymentMethod('cash')}
-                className={cn(
-                  "border-2 rounded-lg p-4 cursor-pointer transition-all",
-                  paymentMethod === 'cash'
-                    ? "border-primary bg-primary/5"
-                    : "border-gray-200 hover:border-primary/50"
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="mt-1">
-                    <div className={cn(
-                      "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                      paymentMethod === 'cash' ? "border-primary" : "border-gray-300"
-                    )}>
-                      {paymentMethod === 'cash' && (
-                        <div className="w-3 h-3 rounded-full bg-primary"></div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Wallet className="w-5 h-5 text-primary" />
-                      <span className="font-semibold">Tiền mặt</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Thanh toán trực tiếp tại sân khi sử dụng
-                    </p>
+        {/* Payment Method Selection */}
+        <div className="space-y-4">
+          <Label className="text-base font-semibold">Phương thức thanh toán</Label>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Cash Payment */}
+            <div
+              onClick={() => setPaymentMethod('cash')}
+              className={cn(
+                "border-2 rounded-lg p-4 cursor-pointer transition-all",
+                paymentMethod === 'cash'
+                  ? "border-primary bg-primary/5"
+                  : "border-gray-200 hover:border-primary/50"
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-1">
+                  <div className={cn(
+                    "w-5 h-5 rounded-full border-2 flex items-center justify-center",
+                    paymentMethod === 'cash' ? "border-primary" : "border-gray-300"
+                  )}>
+                    {paymentMethod === 'cash' && (
+                      <div className="w-3 h-3 rounded-full bg-primary"></div>
+                    )}
                   </div>
                 </div>
-              </div>
-
-              {/* Transfer Payment */}
-              <div
-                onClick={() => setPaymentMethod('transfer')}
-                className={cn(
-                  "border-2 rounded-lg p-4 cursor-pointer transition-all",
-                  paymentMethod === 'transfer'
-                    ? "border-primary bg-primary/5"
-                    : "border-gray-200 hover:border-primary/50"
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="mt-1">
-                    <div className={cn(
-                      "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                      paymentMethod === 'transfer' ? "border-primary" : "border-gray-300"
-                    )}>
-                      {paymentMethod === 'transfer' && (
-                        <div className="w-3 h-3 rounded-full bg-primary"></div>
-                      )}
-                    </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Wallet className="w-5 h-5 text-primary" />
+                    <span className="font-semibold">Tiền mặt</span>
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <CreditCard className="w-5 h-5 text-primary" />
-                      <span className="font-semibold">Chuyển khoản</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Chuyển khoản qua ngân hàng và upload bill
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Transfer Payment Details */}
-          {paymentMethod === 'transfer' && (
-            <div className="space-y-4 animate-fade-in">
-              <Alert className="bg-blue-50 border-blue-300">
-                <Info className="h-4 w-4 text-blue-600" />
-                <AlertDescription className="text-blue-900">
-                  <div className="space-y-2">
-                    <p className="font-semibold">📋 Hướng dẫn thanh toán chuyển khoản:</p>
-                    <ol className="list-decimal list-inside space-y-1 text-sm ml-2">
-                      <li>Quét mã QR hoặc chuyển khoản với số tiền <span className="font-bold text-blue-700">{formatVND(totalPrice)}</span></li>
-                      <li>Chụp lại bill/screenshot giao dịch thành công</li>
-                      <li>Upload bill vào ô bên dưới</li>
-                      <li>Chờ chủ sân xác nhận thanh toán (thường trong vài phút)</li>
-                      <li>Sau khi xác nhận, bạn có thể mở đăng ký giải</li>
-                    </ol>
-                    <p className="text-xs text-blue-700 mt-2"><strong>Lưu ý:</strong> Giải đấu sẽ ở trạng thái bản nháp cho đến khi thanh toán được xác nhận.</p>
-                  </div>
-                </AlertDescription>
-              </Alert>
-
-              {/* QR Code Display */}
-              {ownerQRCode ? (
-                <div className="flex flex-col items-center space-y-3 p-6 bg-white border-2 border-dashed rounded-lg">
-                  <p className="font-semibold text-lg">Quét mã QR để chuyển khoản</p>
-                  <img
-                    src={ownerQRCode}
-                    alt="QR Code thanh toán"
-                    className="w-64 h-64 object-contain border rounded-lg"
-                  />
-                  <p className="text-sm text-muted-foreground text-center">
-                    Số tiền: <span className="font-bold text-primary">{formatVND(totalPrice)}</span>
+                  <p className="text-sm text-muted-foreground">
+                    Thanh toán trực tiếp tại sân sau khi chủ sân xác nhận
                   </p>
                 </div>
-              ) : (
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    Chủ sân chưa cập nhật QR code. Vui lòng liên hệ chủ sân hoặc chọn thanh toán tiền mặt.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* Upload Payment Proof */}
-              <div className="space-y-2">
-                <Label>Upload bill chuyển khoản *</Label>
-                <ImageUpload
-                  value={paymentProofUrl || undefined}
-                  onChange={(url) => setPaymentProofUrl(url)}
-                  bucket="image"
-                  folder="payment-proofs"
-                  maxSize={5}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Upload ảnh bill/screenshot giao dịch chuyển khoản thành công (PNG, JPG - tối đa 5MB)
-                </p>
               </div>
             </div>
-          )}
 
-          {/* Cash Payment Info */}
-          {paymentMethod === 'cash' && (
-            <div className="space-y-3 animate-fade-in">
-              <Alert className="bg-amber-50 border-amber-300">
-                <Info className="h-4 w-4 text-amber-600" />
-                <AlertDescription className="text-amber-900">
-                  <div className="space-y-2">
-                    <p className="font-semibold">📋 Hướng dẫn thanh toán tiền mặt:</p>
-                    <ol className="list-decimal list-inside space-y-1 text-sm ml-2">
-                      <li>Liên hệ chủ sân để hẹn lịch thanh toán</li>
-                      <li>Mang theo <span className="font-bold text-amber-700">{formatVND(totalPrice)}</span> tiền mặt</li>
-                      <li>Thanh toán trực tiếp tại sân</li>
-                      <li>Chủ sân sẽ xác nhận thanh toán trên hệ thống</li>
-                      <li>Sau khi xác nhận, bạn có thể mở đăng ký giải</li>
-                    </ol>
+            {/* Transfer Payment */}
+            <div
+              onClick={() => setPaymentMethod('transfer')}
+              className={cn(
+                "border-2 rounded-lg p-4 cursor-pointer transition-all",
+                paymentMethod === 'transfer'
+                  ? "border-primary bg-primary/5"
+                  : "border-gray-200 hover:border-primary/50"
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-1">
+                  <div className={cn(
+                    "w-5 h-5 rounded-full border-2 flex items-center justify-center",
+                    paymentMethod === 'transfer' ? "border-primary" : "border-gray-300"
+                  )}>
+                    {paymentMethod === 'transfer' && (
+                      <div className="w-3 h-3 rounded-full bg-primary"></div>
+                    )}
                   </div>
-                </AlertDescription>
-              </Alert>
-              
-              <Alert className="bg-blue-50 border-blue-300">
-                <Info className="h-4 w-4 text-blue-600" />
-                <AlertDescription className="text-blue-900 text-sm">
-                  <strong>Lưu ý:</strong> Giải đấu sẽ ở trạng thái <span className="font-semibold">Bản nháp</span> và <span className="font-semibold">chưa thể mở đăng ký</span> cho đến khi chủ sân xác nhận đã nhận thanh toán.
-                </AlertDescription>
-              </Alert>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CreditCard className="w-5 h-5 text-primary" />
+                    <span className="font-semibold">Chuyển khoản</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Thanh toán online sau khi chủ sân xác nhận
+                  </p>
+                </div>
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
-    );
-  };
+          </div>
+        </div>
+
+        {/* Info Alert */}
+        <Alert className="bg-blue-50 border-blue-300">
+          <Info className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-blue-900">
+            <p className="font-semibold mb-2">📋 Quy trình tiếp theo:</p>
+            <ol className="list-decimal list-inside space-y-1 text-sm ml-2">
+              <li>Tạo giải đấu và gửi yêu cầu đặt sân</li>
+              <li>Chờ chủ sân xác nhận đặt sân (status = pending)</li>
+              <li>Sau khi chủ sân xác nhận (status = confirmed), bạn sẽ nhận thông báo</li>
+              <li>
+                {paymentMethod === 'cash' 
+                  ? 'Thanh toán tiền mặt trực tiếp tại sân theo hẹn với chủ sân'
+                  : 'Thanh toán online trong trang chi tiết giải (xem QR code, upload bill)'
+                }
+              </li>
+              <li>Chủ sân xác nhận thanh toán → Bạn có thể publish giải (mở đăng ký)</li>
+            </ol>
+          </AlertDescription>
+        </Alert>
+
+        {paymentMethod === 'transfer' && (
+          <Alert className="bg-green-50 border-green-300">
+            <Info className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-900 text-sm">
+              <strong>💡 Lưu ý:</strong> Bạn sẽ thanh toán online trong trang chi tiết giải sau khi chủ sân xác nhận đặt sân. Hệ thống sẽ hiển thị QR code thanh toán và cho phép bạn upload bill.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {paymentMethod === 'cash' && (
+          <Alert className="bg-amber-50 border-amber-300">
+            <Info className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-amber-900 text-sm">
+              <strong>💡 Lưu ý:</strong> Sau khi chủ sân xác nhận đặt sân, hãy liên hệ chủ sân để hẹn lịch thanh toán tiền mặt trực tiếp tại sân.
+            </AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="container max-w-5xl mx-auto py-8">

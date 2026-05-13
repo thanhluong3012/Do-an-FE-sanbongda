@@ -119,7 +119,15 @@ export interface FieldBooking {
   day_book?: string; // Field name from API
   start_time: string;
   end_time: string;
+  total_price?: number;
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
+  payment_method?: 'transfer' | 'cash';
+  payment_status?: 'pending' | 'paid' | 'refunded';
+  payment_proof_url?: string;
+  customer_name?: string;
+  customer_phone?: string;
+  customer_email?: string;
+  note?: string;
   field?: {
     id: number;
     name: string;
@@ -128,6 +136,8 @@ export interface FieldBooking {
       id: number;
       name: string;
       address?: string;
+      phone?: string;
+      email?: string;
     };
   };
   created_at?: string;
@@ -136,11 +146,11 @@ export interface FieldBooking {
 
 // Interface cho Book Fields Request
 export interface BookFieldsRequest {
-  field_ids: number[];
-  booking_date?: string;
-  start_time?: string;
-  end_time?: string;
-  session_ids?: number[]; // IDs của các buổi đấu
+  bookings: Array<{
+    field_id: number;
+    date: string; // YYYY-MM-DD
+    session_type: 'morning' | 'afternoon' | 'evening' | 'full_day';
+  }>;
 }
 
 // Interface cho Tournament Request

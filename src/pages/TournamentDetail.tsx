@@ -4,6 +4,8 @@ import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,7 +28,7 @@ import { RulesFileSection } from '@/components/Tournament/RulesFileSection';
 import {
   Trophy, MapPin, Users, Calendar, ArrowLeft, CheckCircle,
   Loader2, User, Megaphone, AlertCircle, ClipboardList,
-  Swords, BarChart3, Info, Clock,
+  Swords, BarChart3, Info, Clock, DollarSign, Phone, Mail, Building2, CheckCircle2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -36,6 +38,11 @@ const formatDate = (dateString: string | null | undefined) => {
   if (!dateString) return 'Chưa có ngày';
   try { return format(new Date(dateString), 'dd/MM/yyyy', { locale: vi }); }
   catch { return dateString; }
+};
+
+const formatCurrency = (amount: number | undefined | null): string => {
+  if (!amount) return '0 ₫';
+  return new Intl.NumberFormat('vi-VN', { style: 'decimal' }).format(amount) + ' ₫';
 };
 
 const TabLoading = () => (
@@ -817,43 +824,204 @@ const TournamentDetail = () => {
                         </CardContent>
                       </Card>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 gap-4">
                       {fieldBookings.map((booking) => {
                         const bookingDate = booking.day_book || booking.booking_date;
                         return (
-                        <Card key={booking.id} className="border-2">
-                          <CardContent className="pt-4">
-                            <div className="flex items-start gap-3">
-                              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
-                                <MapPin className="w-5 h-5 text-green-600" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-semibold truncate">{booking.field?.name || 'Sân'}</h4>
-                                {booking.field?.field_cluster && (
-                                  <p className="text-xs text-muted-foreground truncate">
-                                    {booking.field.field_cluster.name}
-                                  </p>
-                                )}
-                                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                                  <div className="flex items-center gap-1.5">
-                                    <Calendar className="w-3 h-3" />
-                                    <span>{formatDate(bookingDate)}</span>
-                                  </div>
-                                  <div className="flex items-center gap-1.5">
-                                    <Clock className="w-3 h-3" />
-                                    <span>{booking.start_time} - {booking.end_time}</span>
-                                  </div>
+                        <Card key={booking.id} className="border-2 hover:shadow-md transition-shadow">
+                          <CardContent className="pt-4 space-y-4">
+                            {/* Header - Field Info */}
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3 flex-1 min-w-0">
+                                <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
+                                  <MapPin className="w-5 h-5 text-green-600" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-semibold truncate">{booking.field?.name || 'Sân'}</h4>
+                                  {booking.field?.field_cluster && (
+                                    <p className="text-xs text-muted-foreground truncate">
+                                      {booking.field.field_cluster.name}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                               <div className="shrink-0">
-                                {booking.status === 'confirmed' && (
-                                  <CheckCircle className="w-5 h-5 text-green-600" />
-                                )}
-                                {booking.status === 'pending' && (
-                                  <Clock className="w-5 h-5 text-yellow-600" />
-                                )}
+                                <Badge variant={booking.status === 'confirmed' ? 'default' : booking.status === 'pending' ? 'secondary' : 'outline'}>
+                                  {booking.status === 'confirmed' ? '✅ Đã xác nhận' : 
+                                   booking.status === 'pending' ? '⏳ Chờ xác nhận' :
+                                   booking.status === 'completed' ? '✓ Hoàn thành' : '❌ Đã hủy'}
+                                </Badge>
                               </div>
                             </div>
+
+                            {/* Date & Time */}
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm">
+                                <Calendar className="w-4 h-4 text-muted-foreground" />
+                                <span className="font-medium">Ngày đặt:</span>
+                                <span className="text-muted-foreground">{formatDate(bookingDate)}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-sm">
+                                <Clock className="w-4 h-4 text-muted-foreground" />
+                                <span className="font-medium">Giờ chơi:</span>
+                                <span className="text-muted-foreground">{booking.start_time} - {booking.end_time}</span>
+                              </div>
+                            </div>
+
+                            {/* Price */}
+                            {booking.total_price && (
+                              <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg">
+                                <div className="flex items-center gap-2">
+                                  <DollarSign className="w-4 h-4 text-primary" />
+                                  <span className="font-medium">Giá tiền</span>
+                                </div>
+                                <span className="text-lg font-bold text-primary">
+                                  {formatCurrency(booking.total_price)}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Payment Info */}
+                            {booking.payment_method && (
+                              <div className="space-y-3 pt-3 border-t">
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Phương thức thanh toán:</span>
+                                  <Badge variant="outline" className="font-semibold text-primary">
+                                    {booking.payment_method === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
+                                  </Badge>
+                                </div>
+
+                                {/* Ghi chú cho cả hai phương thức */}
+                                <Alert className="bg-blue-50 border-blue-200">
+                                  <AlertCircle className="h-4 w-4 text-blue-600" />
+                                  <AlertDescription className="text-sm text-blue-800">
+                                    {booking.payment_method === 'transfer' 
+                                      ? 'Bạn có thể thanh toán trực tuyến tại đây hoặc đến thanh toán trực tiếp tại sân.'
+                                      : 'Bạn có thể đến thanh toán trực tiếp tại sân, dù chọn tiền mặt hay chuyển khoản.'
+                                    }
+                                  </AlertDescription>
+                                </Alert>
+
+                                {booking.payment_method === 'transfer' && (
+                                  <>
+                                    <div className="flex items-center justify-between text-sm">
+                                      <span className="text-muted-foreground">Trạng thái thanh toán:</span>
+                                      <Badge 
+                                        variant={booking.payment_status === 'paid' ? 'default' : 'secondary'}
+                                        className={booking.payment_status === 'paid' ? 'bg-green-100 text-green-800' : ''}
+                                      >
+                                        {booking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ xác nhận'}
+                                      </Badge>
+                                    </div>
+
+                                    {booking.payment_proof_url && (
+                                      <Alert className={booking.payment_status === 'paid' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}>
+                                        <CheckCircle2 className={booking.payment_status === 'paid' ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-blue-600'} />
+                                        <AlertDescription className={booking.payment_status === 'paid' ? 'text-sm text-green-800' : 'text-sm text-blue-800'}>
+                                          {booking.payment_status === 'paid' 
+                                            ? 'Đã được chủ sân xác nhận thanh toán.'
+                                            : 'Đã upload chứng từ. Đang chờ chủ sân xác nhận.'
+                                          }
+                                        </AlertDescription>
+                                      </Alert>
+                                    )}
+
+                                    {/* Thông báo khi chưa xác nhận */}
+                                    {booking.status === 'pending' && (!booking.payment_status || booking.payment_status !== 'paid') && (
+                                      <Alert className="bg-yellow-50 border-yellow-200">
+                                        <AlertCircle className="h-4 w-4 text-yellow-600" />
+                                        <AlertDescription className="text-sm text-yellow-800">
+                                          Booking đang chờ chủ sân xác nhận. Bạn có thể thanh toán sau khi được xác nhận.
+                                        </AlertDescription>
+                                      </Alert>
+                                    )}
+                                  </>
+                                )}
+
+                                {booking.payment_method === 'cash' && booking.payment_status !== 'paid' && (
+                                  <Alert className="bg-amber-50 border-amber-200">
+                                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                                    <AlertDescription className="text-sm text-amber-800">
+                                      Chủ sân sẽ liên hệ với bạn để xác nhận và thanh toán bằng tiền mặt khi đến sân.
+                                    </AlertDescription>
+                                  </Alert>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Contact Info */}
+                            {(booking.customer_name || booking.customer_phone) && (
+                              <div className="space-y-2 pt-2 border-t">
+                                {booking.customer_name && (
+                                  <p className="text-sm">
+                                    <span className="text-muted-foreground">Người đặt:</span>{' '}
+                                    <span className="font-medium">{booking.customer_name}</span>
+                                  </p>
+                                )}
+                                {booking.customer_phone && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <Phone className="w-3 h-3 text-muted-foreground" />
+                                    <span className="text-muted-foreground">{booking.customer_phone}</span>
+                                  </div>
+                                )}
+                                {booking.customer_email && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <Mail className="w-3 h-3 text-muted-foreground" />
+                                    <span className="text-muted-foreground">{booking.customer_email}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Owner / Field Complex Contact Info */}
+                            {booking.field?.field_cluster && (
+                              <div className="space-y-2 pt-2 border-t">
+                                <p className="text-sm font-semibold text-gray-700">Thông tin liên hệ chủ sân</p>
+                                {booking.field.field_cluster.name && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <Building2 className="w-3 h-3 text-muted-foreground" />
+                                    <span className="font-medium">{booking.field.field_cluster.name}</span>
+                                  </div>
+                                )}
+                                {booking.field.field_cluster.phone && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <Phone className="w-3 h-3 text-muted-foreground" />
+                                    <a
+                                      href={`tel:${booking.field.field_cluster.phone}`}
+                                      className="text-blue-600 hover:underline"
+                                    >
+                                      {booking.field.field_cluster.phone}
+                                    </a>
+                                  </div>
+                                )}
+                                {booking.field.field_cluster.email && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <Mail className="w-3 h-3 text-muted-foreground" />
+                                    <a
+                                      href={`mailto:${booking.field.field_cluster.email}`}
+                                      className="text-blue-600 hover:underline"
+                                    >
+                                      {booking.field.field_cluster.email}
+                                    </a>
+                                  </div>
+                                )}
+                                {booking.field.field_cluster.address && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <MapPin className="w-3 h-3 text-muted-foreground" />
+                                    <span className="text-muted-foreground">{booking.field.field_cluster.address}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Note */}
+                            {booking.note && (
+                              <div className="p-3 bg-muted/50 rounded-lg">
+                                <p className="text-sm">
+                                  <span className="font-medium">Ghi chú:</span> {booking.note}
+                                </p>
+                              </div>
+                            )}
                           </CardContent>
                         </Card>
                       )})}

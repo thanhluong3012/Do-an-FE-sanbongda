@@ -21,7 +21,7 @@ import { vi } from 'date-fns/locale';
 import { format, isWeekend } from 'date-fns';
 import { fieldComplexService, FieldComplex, SubField, FieldHourlyPrice } from '@/services/fieldComplexService';
 import { fieldService, BookedSlot } from '@/services/fieldService';
-import { bookingService, Booking } from '@/services/bookingService';
+import { bookingService, Booking, BookingRequest } from '@/services/bookingService';
 import { getOwner } from '@/services/ownerService';
 import { useBookingRealtimeSync, SyncMessage } from '@/hooks/useRealtimeSync';
 import { useToast } from '@/hooks/use-toast';
@@ -73,11 +73,13 @@ const FieldComplexDetail = () => {
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookedTimeSlots, setBookedTimeSlots] = useState<Set<string>>(new Set());
-  const [paymentMethod, setPaymentMethod] = useState<'transfer' | 'cash'>('transfer');
-  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-  const [bookingResult, setBookingResult] = useState<any>(null);
-  const [paymentInfo, setPaymentInfo] = useState<any>(null);
-  const [ownerQRCode, setOwnerQRCode] = useState<string | null>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'transfer' | 'cash'>('transfer');
+  
+  // Error handling states
+  const [showMissingPriceDialog, setShowMissingPriceDialog] = useState(false);
+  const [missingPriceError, setMissingPriceError] = useState<any>(null);
+  const [showPriceMismatchDialog, setShowPriceMismatchDialog] = useState(false);
+  const [priceMismatchError, setPriceMismatchError] = useState<any>(null);
 
   // Handler for date selection - reset time when date changes
   const handleDateSelect = (date: Date | undefined) => {
@@ -133,7 +135,6 @@ const FieldComplexDetail = () => {
   useEffect(() => {
     if (id) {
       loadFieldComplex(); // Đã bao gồm fields và hourly_prices trong response
-      loadOwnerQRCode(); // Load owner QR code
     }
   }, [id]);
 
@@ -188,63 +189,6 @@ const FieldComplexDetail = () => {
       }
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadOwnerQRCode = async () => {
-    if (!id) return;
-    
-    try {
-      // Load field cluster detail để lấy owner info
-      const cluster = await fieldComplexService.getById(Number(id));
-      console.log('🔍 Field Cluster Data:', cluster);
-      console.log('🔍 Owner Data:', cluster?.owner);
-      console.log('🔍 Owner ID:', cluster?.owner_id);
-      
-      // Check nếu cluster có owner relationship
-      if (cluster?.owner) {
-        // Trường hợp 1: Backend đã include owner (RECOMMENDED)
-        const qrCode = cluster.owner.qr_code_image 
-                    || cluster.owner.qr_code_url 
-                    || cluster.owner.qr_image;
-        
-        if (qrCode) {
-          console.log('✅ QR Code found from owner relationship:', qrCode);
-          setOwnerQRCode(qrCode);
-        } else {
-          console.log('❌ Owner chưa upload QR code');
-          setOwnerQRCode(null);
-        }
-      } else if (cluster?.owner_id) {
-        // Trường hợp 2: Backend chưa include owner, workaround bằng gọi API riêng
-        console.log('⚠️ Backend không trả owner relationship, đang gọi API riêng...');
-        try {
-          const ownerResponse = await getOwner(cluster.owner_id);
-          console.log('🔍 Owner fetched separately:', ownerResponse);
-          const owner = ownerResponse?.data || ownerResponse;
-          
-          const qrCode = owner?.qr_code_image 
-                      || owner?.qr_code_url 
-                      || owner?.qr_image;
-          
-          if (qrCode) {
-            console.log('✅ QR Code found from separate API:', qrCode);
-            setOwnerQRCode(qrCode);
-          } else {
-            console.log('❌ Owner chưa upload QR code');
-            setOwnerQRCode(null);
-          }
-        } catch (ownerError) {
-          console.error('Error fetching owner separately:', ownerError);
-          setOwnerQRCode(null);
-        }
-      } else {
-        console.log('❌ Không có owner_id trong cluster data');
-        setOwnerQRCode(null);
-      }
-    } catch (error) {
-      console.error('Error loading owner QR code:', error);
-      setOwnerQRCode(null);
     }
   };
 
@@ -529,13 +473,13 @@ const FieldComplexDetail = () => {
       setCheckingAvailability(false);
       
       // ✅ BƯỚC 2: TẠO BOOKING
-      const bookingData = {
+      const bookingData: BookingRequest = {
         field_id: selectedField.id,
         booking_date: bookingDate,
         start_time: startTime,
         end_time: endTime,
         total_price: calculateTotalPrice(),
-        payment_method: paymentMethod,
+        payment_method: selectedPaymentMethod,
       };
 
       const result = await bookingService.createBooking(bookingData);
@@ -546,23 +490,16 @@ const FieldComplexDetail = () => {
         try {
           console.log('Processing successful booking...');
           
-          // Lưu thông tin booking và payment_info
-          setBookingResult(result.booking || result.data);
-          setPaymentInfo(result.payment_info);
-          
           // Reset form trước để tránh re-submit
           setStartTime('');
           setEndTime('');
           
-          // Show payment dialog
-          setShowPaymentDialog(true);
-          
-          // Show success toast WITH message from API
+          // Show success toast - CHỜ OWNER XÁC NHẬN
           if (toast) {
             toast({
-              title: 'Đặt sân thành công! ✅',
-              description: result.message || `Đã đặt sân từ ${startTime} đến ${endTime} vào ${format(selectedDate, 'dd/MM/yyyy')}`,
-              duration: 5000,
+              title: '⏳ Đặt sân thành công!',
+              description: result.message || 'Đơn đặt sân đang chờ chủ sân xác nhận. Bạn sẽ nhận được thông báo khi đơn được xử lý.',
+              duration: 7000,
             });
           }
 
@@ -588,15 +525,15 @@ const FieldComplexDetail = () => {
           await loadBookingsForSelectedField();
           
           console.log('✅ Booking process completed successfully');
+          
+          // Tự động chuyển sang trang lịch sử đặt sân sau 2 giây
+          setTimeout(() => {
+            navigate('/my-bookings');
+          }, 2000);
         } catch (postBookingError) {
           console.error('❌ Error in post-booking processing:', postBookingError);
           // Don't throw, just log - booking was successful
         }
-
-        // Không tự động navigate, để user click button trong toast
-        // setTimeout(() => {
-        //   navigate('/my-bookings');
-        // }, 2000);
       } else {
         // Booking failed - show error WITH message from API
         if (toast) {
@@ -612,10 +549,43 @@ const FieldComplexDetail = () => {
       }
     } catch (error: any) {
       console.error('Error creating booking:', error);
+      
+      const errorData = error.response?.data?.data;
+      const errorMessage = error.response?.data?.message;
+      
+      // Error 1: Missing price config (chưa cấu hình giá)
+      if (errorData?.missing_price_config) {
+        console.log('🚫 Missing price config error:', errorData);
+        setMissingPriceError({
+          message: errorMessage || 'Chưa có cấu hình giá cho loại sân này',
+          fieldType: errorData.field_type,
+          dayType: errorData.day_type,
+          fieldClusterName: errorData.field_cluster_name,
+          contactPhone: errorData.contact_phone,
+        });
+        setShowMissingPriceDialog(true);
+        return;
+      }
+      
+      // Error 2: Price mismatch (giá không khớp)
+      if (errorData?.price_mismatch) {
+        console.log('⚠️ Price mismatch error:', errorData);
+        setPriceMismatchError({
+          message: errorMessage || 'Giá đã thay đổi, vui lòng kiểm tra lại',
+          expectedPrice: errorData.expected_price,
+          receivedPrice: errorData.received_price,
+          pricePerHour: errorData.price_hour,
+          hours: errorData.hours,
+        });
+        setShowPriceMismatchDialog(true);
+        return;
+      }
+      
+      // Generic error
       if (toast) {
         toast({
           title: 'Lỗi',
-          description: error.response?.data?.message || 'Không thể đặt sân. Vui lòng thử lại sau.',
+          description: errorMessage || 'Không thể đặt sân. Vui lòng thử lại sau.',
           variant: 'destructive',
         });
       }
@@ -1291,40 +1261,77 @@ const FieldComplexDetail = () => {
                     </div>
 
                     {/* Payment Method Selection */}
-                    {startTime && endTime && totalHours > 0 && (
-                      <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-xl border-2 border-blue-200 dark:border-blue-800">
-                        <h4 className="font-semibold text-sm mb-3 text-blue-900 dark:text-blue-200">
+                    {selectedField && selectedDate && (
+                      <div className="space-y-4 p-4 rounded-xl border-2 border-primary/20 bg-primary/5">
+                        <h4 className="text-sm font-semibold flex items-center gap-2">
+                          <DollarSign className="w-4 h-4 text-primary" />
                           Phương thức thanh toán
                         </h4>
-                        <div className="grid grid-cols-2 gap-3">
+
+                        <div className="grid grid-cols-1 gap-3">
                           <button
                             type="button"
-                            onClick={() => setPaymentMethod('transfer')}
-                            className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center gap-2 ${
-                              paymentMethod === 'transfer'
-                                ? 'border-primary bg-primary/10 shadow-md'
-                                : 'border-border hover:border-primary/50'
+                            onClick={() => setSelectedPaymentMethod('cash')}
+                            className={`w-full text-left border-2 rounded-lg p-4 transition-all ${
+                              selectedPaymentMethod === 'cash'
+                                ? 'border-primary bg-primary/5'
+                                : 'border-gray-200 dark:border-gray-700 hover:border-primary/50'
                             }`}
                           >
-                            <QrCode className={`w-6 h-6 ${paymentMethod === 'transfer' ? 'text-primary' : 'text-muted-foreground'}`} />
-                            <div className="text-center">
-                              <div className="font-medium text-sm">Chuyển khoản</div>
-                              <div className="text-xs text-muted-foreground">Quét mã QR</div>
+                            <div className="flex items-start gap-3">
+                              <div className="mt-1">
+                                <div
+                                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                    selectedPaymentMethod === 'cash' ? 'border-primary' : 'border-gray-300 dark:border-gray-600'
+                                  }`}
+                                >
+                                  {selectedPaymentMethod === 'cash' && (
+                                    <div className="w-3 h-3 rounded-full bg-primary"></div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Wallet className="w-5 h-5 text-primary" />
+                                  <span className="font-semibold">Tiền mặt</span>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  Thanh toán trực tiếp tại sân khi sử dụng
+                                </p>
+                              </div>
                             </div>
                           </button>
+
                           <button
                             type="button"
-                            onClick={() => setPaymentMethod('cash')}
-                            className={`p-3 rounded-lg border-2 transition-all flex flex-col items-center gap-2 ${
-                              paymentMethod === 'cash'
-                                ? 'border-primary bg-primary/10 shadow-md'
-                                : 'border-border hover:border-primary/50'
+                            onClick={() => setSelectedPaymentMethod('transfer')}
+                            className={`w-full text-left border-2 rounded-lg p-4 transition-all ${
+                              selectedPaymentMethod === 'transfer'
+                                ? 'border-primary bg-primary/5'
+                                : 'border-gray-200 dark:border-gray-700 hover:border-primary/50'
                             }`}
                           >
-                            <Wallet className={`w-6 h-6 ${paymentMethod === 'cash' ? 'text-primary' : 'text-muted-foreground'}`} />
-                            <div className="text-center">
-                              <div className="font-medium text-sm">Tiền mặt</div>
-                              <div className="text-xs text-muted-foreground">Thanh toán tại sân</div>
+                            <div className="flex items-start gap-3">
+                              <div className="mt-1">
+                                <div
+                                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                    selectedPaymentMethod === 'transfer' ? 'border-primary' : 'border-gray-300 dark:border-gray-600'
+                                  }`}
+                                >
+                                  {selectedPaymentMethod === 'transfer' && (
+                                    <div className="w-3 h-3 rounded-full bg-primary"></div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <DollarSign className="w-5 h-5 text-primary" />
+                                  <span className="font-semibold">Chuyển khoản</span>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  Chuyển khoản qua ngân hàng trước khi xác nhận
+                                </p>
+                              </div>
                             </div>
                           </button>
                         </div>
@@ -1346,6 +1353,12 @@ const FieldComplexDetail = () => {
                             <span className="text-muted-foreground">Loại ngày:</span>
                             <span className="font-semibold">
                               {isWeekendDay ? '🌟 Cuối tuần' : '📅 Ngày thường'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center p-2 bg-white/50 dark:bg-black/20 rounded-lg">
+                            <span className="text-muted-foreground">Thanh toán:</span>
+                            <span className="font-semibold">
+                              {selectedPaymentMethod === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
                             </span>
                           </div>
                         </div>
@@ -1401,230 +1414,149 @@ const FieldComplexDetail = () => {
       </main>
       <Footer />
 
-      {/* Payment Information Dialog */}
-      {bookingResult && paymentInfo && (
-        <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-2xl">
-                <CheckCircle2 className="w-6 h-6 text-green-600" />
-                Đặt sân thành công!
-              </DialogTitle>
-              <DialogDescription>
-                Booking #{bookingResult.id} - Tổng tiền: <span className="font-bold text-primary">{formatCurrency(bookingResult.total_price || 0)}</span>
-              </DialogDescription>
-            </DialogHeader>
+      {/* Error Dialog 1: Missing Price Config */}
+      <Dialog open={showMissingPriceDialog} onOpenChange={setShowMissingPriceDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <AlertCircle className="w-6 h-6 text-red-600" />
+              Chưa có giá
+            </DialogTitle>
+            <DialogDescription>
+              {missingPriceError?.message}
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="space-y-6">
-              {/* API Success Message - Hiển thị nếu có */}
-              {(paymentInfo?.instruction || bookingResult?.message) && (
-                <Alert className="bg-green-50 border-green-200">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <AlertDescription className="text-sm text-green-800">
-                    {paymentInfo?.instruction || bookingResult?.message || 'Đặt sân thành công!'}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* Transfer Payment */}
-              {paymentMethod === 'transfer' && (
-                <div className="space-y-4">{/* QR Code */}
-                  {ownerQRCode ? (
-                    <Card>
-                      <CardContent className="pt-6 text-center">
-                        <h3 className="font-semibold mb-4 flex items-center justify-center gap-2">
-                          <QrCode className="w-5 h-5 text-primary" />
-                          Quét mã QR để chuyển khoản
-                        </h3>
-                        <img 
-                          src={ownerQRCode} 
-                          alt="QR Code thanh toán" 
-                          className="max-w-xs w-full mx-auto border-2 border-border rounded-lg"
-                        />
-                        <p className="text-xs text-muted-foreground mt-3">
-                          Mã QR chuyển khoản của chủ sân
-                        </p>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <Alert className="bg-orange-50 border-orange-200">
-                      <AlertCircle className="h-4 w-4 text-orange-600" />
-                      <AlertDescription className="text-orange-800">
-                        <strong>Chủ sân chưa cập nhật mã QR.</strong> Vui lòng liên hệ trực tiếp với chủ sân để được hướng dẫn thanh toán.
-                      </AlertDescription>
-                    </Alert>
+          <div className="space-y-4">
+            <Alert className="bg-red-50 border-red-200">
+              <AlertDescription className="text-sm text-red-800">
+                <div className="space-y-2">
+                  {missingPriceError?.fieldClusterName && (
+                    <div>
+                      <strong>Cụm sân:</strong> {missingPriceError.fieldClusterName}
+                    </div>
                   )}
-
-                  {/* Transfer Note - Hiển thị nếu backend trả về */}
-                  {paymentInfo && paymentInfo.transfer_note && (
-                    <Card className="bg-primary/5 border-primary/20">
-                      <CardContent className="pt-6">
-                        <p className="text-sm font-medium text-muted-foreground mb-2">
-                          Nội dung chuyển khoản:
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <code className="flex-1 bg-background px-4 py-3 rounded-lg text-lg font-bold text-primary border-2 border-primary">
-                            {paymentInfo.transfer_note}
-                          </code>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => {
-                              navigator.clipboard.writeText(paymentInfo.transfer_note);
-                              toast({ title: 'Đã sao chép', description: 'Đã sao chép nội dung chuyển khoản' });
-                            }}
-                          >
-                            <Copy className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          * Vui lòng ghi đúng nội dung này khi chuyển khoản
-                        </p>
-                      </CardContent>
-                    </Card>
+                  {missingPriceError?.fieldType && (
+                    <div>
+                      <strong>Loại sân:</strong> {missingPriceError.fieldType}
+                    </div>
                   )}
-
-                  {/* Thông tin chủ sân */}
-                  {fieldComplex && (
-                    <Card>
-                      <CardContent className="pt-6">
-                        <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
-                          <Building2 className="w-4 h-4 text-primary" />
-                          Thông tin chủ sân
-                        </h4>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
-                            <span className="text-muted-foreground">Cụm sân:</span>
-                            <span className="font-medium">{fieldComplex.name}</span>
-                          </div>
-                          {fieldComplex.address && (
-                            <div className="flex items-start gap-2 p-2 bg-muted/50 rounded-lg">
-                              <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                              <div className="flex-1">
-                                <span className="text-xs text-muted-foreground block">Địa chỉ:</span>
-                                <span className="text-sm">{fieldComplex.address}</span>
-                              </div>
-                            </div>
-                          )}
-                          {fieldComplex.phone && (
-                            <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
-                              <span className="text-muted-foreground flex items-center gap-2">
-                                <Phone className="w-4 h-4" />
-                                Liên hệ:
-                              </span>
-                              <a href={`tel:${fieldComplex.phone}`} className="font-medium text-primary hover:underline">
-                                {fieldComplex.phone}
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
+                  {missingPriceError?.dayType && (
+                    <div>
+                      <strong>Loại ngày:</strong> {missingPriceError.dayType === 'weekend' ? 'Cuối tuần' : 'Ngày thường'}
+                    </div>
                   )}
-
-                  <Alert className="bg-blue-50 border-blue-200">
-                    <AlertDescription className="text-sm text-blue-800">
-                      <strong>📋 Hướng dẫn:</strong>
-                      <ol className="list-decimal list-inside mt-2 space-y-1 text-xs">
-                        <li>Quét mã QR bằng app ngân hàng của bạn</li>
-                        <li>Chuyển khoản đúng số tiền: <strong>{formatCurrency(bookingResult.total_price || 0)}</strong></li>
-                        <li>Ghi nội dung chuyển khoản nếu có</li>
-                        <li>Sau khi chuyển khoản, vào <strong>Lịch sử đặt sân</strong> để upload ảnh bill</li>
-                      </ol>
-                    </AlertDescription>
-                  </Alert>
-
-                  <Alert className="bg-yellow-50 border-yellow-200">
-                    <AlertDescription className="text-yellow-800">
-                      Sau khi chuyển khoản, vui lòng vào <strong>Lịch sử đặt sân</strong> để upload ảnh bill chuyển khoản.
-                    </AlertDescription>
-                  </Alert>
                 </div>
-              )}
+              </AlertDescription>
+            </Alert>
 
-              {/* Cash Payment */}
-              {paymentMethod === 'cash' && paymentInfo.owner_contact && (
-                <div className="space-y-4">
-                  <Alert className="bg-amber-50 border-amber-200">
-                    <Wallet className="h-4 w-4 text-amber-600" />
-                    <AlertDescription className="text-sm text-amber-800">
-                      <strong>Thanh toán bằng tiền mặt trực tiếp tại sân.</strong>
-                      {paymentInfo.instruction && <span> {paymentInfo.instruction}</span>}
-                    </AlertDescription>
-                  </Alert>
+            {missingPriceError?.contactPhone && (
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Liên hệ chủ sân:</span>
+                    <a 
+                      href={`tel:${missingPriceError.contactPhone}`}
+                      className="font-semibold text-primary hover:underline flex items-center gap-2"
+                    >
+                      <Phone className="w-4 h-4" />
+                      {missingPriceError.contactPhone}
+                    </a>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-                  <Card>
-                    <CardContent className="pt-6 space-y-4">
-                      <h3 className="font-semibold flex items-center gap-2">
-                        <Building2 className="w-5 h-5 text-primary" />
-                        Thông tin liên hệ chủ sân
-                      </h3>
+            <Alert className="bg-blue-50 border-blue-200">
+              <AlertDescription className="text-sm text-blue-800">
+                Vui lòng liên hệ chủ sân để được tư vấn về giá và đặt sân.
+              </AlertDescription>
+            </Alert>
 
-                      <div className="space-y-3">
-                        <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-                          <Building2 className="w-5 h-5 text-muted-foreground mt-0.5" />
-                          <div>
-                            <p className="text-sm text-muted-foreground">Tên sân</p>
-                            <p className="font-medium">{paymentInfo.owner_contact.name}</p>
-                          </div>
-                        </div>
+            <Button
+              className="w-full"
+              onClick={() => {
+                setShowMissingPriceDialog(false);
+                setMissingPriceError(null);
+              }}
+            >
+              Đã hiểu
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-                        <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-                          <Phone className="w-5 h-5 text-muted-foreground mt-0.5" />
-                          <div>
-                            <p className="text-sm text-muted-foreground">Số điện thoại</p>
-                            <p className="font-medium">{paymentInfo.owner_contact.phone}</p>
-                          </div>
-                        </div>
+      {/* Error Dialog 2: Price Mismatch */}
+      <Dialog open={showPriceMismatchDialog} onOpenChange={setShowPriceMismatchDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <AlertCircle className="w-6 h-6 text-orange-600" />
+              Giá đã thay đổi
+            </DialogTitle>
+            <DialogDescription>
+              {priceMismatchError?.message}
+            </DialogDescription>
+          </DialogHeader>
 
-                        {paymentInfo.owner_contact.address && (
-                          <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-                            <MapPin className="w-5 h-5 text-muted-foreground mt-0.5" />
-                            <div>
-                              <p className="text-sm text-muted-foreground">Địa chỉ</p>
-                              <p className="font-medium">{paymentInfo.owner_contact.address}</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Alert className="bg-yellow-50 border-yellow-200">
-                    <AlertDescription className="text-yellow-800">
-                      Vui lòng liên hệ chủ sân để thanh toán tiền mặt và xác nhận đặt sân.
-                    </AlertDescription>
-                  </Alert>
+          <div className="space-y-4">
+            <Alert className="bg-orange-50 border-orange-200">
+              <AlertDescription className="text-sm text-orange-800">
+                <div className="space-y-2">
+                  {priceMismatchError?.receivedPrice && (
+                    <div className="flex items-center justify-between">
+                      <span>Giá bạn chọn:</span>
+                      <span className="font-semibold line-through">
+                        {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(priceMismatchError.receivedPrice)}
+                      </span>
+                    </div>
+                  )}
+                  {priceMismatchError?.expectedPrice && (
+                    <div className="flex items-center justify-between">
+                      <span>Giá hiện tại:</span>
+                      <span className="font-bold text-lg text-orange-700">
+                        {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(priceMismatchError.expectedPrice)}
+                      </span>
+                    </div>
+                  )}
+                  {priceMismatchError?.pricePerHour && priceMismatchError?.hours && (
+                    <div className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+                      {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(priceMismatchError.pricePerHour)} × {priceMismatchError.hours} giờ
+                    </div>
+                  )}
                 </div>
-              )}
+              </AlertDescription>
+            </Alert>
 
-              {/* Actions */}
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => {
-                    setShowPaymentDialog(false);
-                    setBookingResult(null);
-                    setPaymentInfo(null);
-                  }}
-                >
-                  Đóng
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={() => {
-                    setShowPaymentDialog(false);
-                    navigate('/my-bookings');
-                  }}
-                >
-                  Xem lịch sử đặt sân
-                </Button>
-              </div>
+            <Alert className="bg-blue-50 border-blue-200">
+              <AlertDescription className="text-sm text-blue-800">
+                Giá sân có thể thay đổi theo thời gian. Vui lòng làm mới trang để xem giá mới nhất.
+              </AlertDescription>
+            </Alert>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowPriceMismatchDialog(false);
+                  setPriceMismatchError(null);
+                }}
+              >
+                Đóng
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  window.location.reload();
+                }}
+              >
+                Làm mới trang
+              </Button>
             </div>
-          </DialogContent>
-        </Dialog>
-      )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
