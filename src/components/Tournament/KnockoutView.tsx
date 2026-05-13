@@ -140,10 +140,16 @@ const BracketMatch = ({
                     ${isFinal ? 'border-yellow-400/30 bg-yellow-600/30' : isThirdPlace ? 'border-orange-400/30 bg-orange-600/30' : 'border-emerald-600/30 bg-emerald-800/30'}
                 `}>
                     <div className="text-[9px] font-bold text-white/90 uppercase tracking-wide leading-tight">
+                        <div className="mb-0.5">Trận #{match.match_number}</div>
                         {match.match_date && fmtTime(match.match_time) ? (
                             <span>{fmtTime(match.match_time)}, {fmtMatchDate(match.match_date)}</span>
                         ) : (
                             'Chưa xác định'
+                        )}
+                        {match.field?.name && (
+                            <div className="text-[8px] text-white/70 font-normal mt-0.5">
+                                📍 {match.field.name}
+                            </div>
                         )}
                     </div>
                 </div>
