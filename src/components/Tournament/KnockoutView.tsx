@@ -117,11 +117,11 @@ const BracketMatch = ({
     const homeName = getTeamName(match.home_team, match.home_from_position);
     const awayName = getTeamName(match.away_team, match.away_from_position);
 
-    const bgColor = isFinal 
-        ? 'bg-gradient-to-br from-yellow-500 to-yellow-600' 
-        : isThirdPlace 
-        ? 'bg-gradient-to-br from-orange-500 to-orange-600'
-        : 'bg-gradient-to-br from-emerald-700 to-emerald-800';
+    const bgColor = isFinal
+        ? 'bg-gradient-to-br from-yellow-500 to-yellow-600'
+        : isThirdPlace
+            ? 'bg-gradient-to-br from-orange-500 to-orange-600'
+            : 'bg-gradient-to-br from-emerald-700 to-emerald-800';
 
     return (
         <div className="relative group">
@@ -209,15 +209,24 @@ export const KnockoutView = ({
     const mainRounds = sortedRounds.filter(r => r.round_type !== 'third_place');
     const thirdPlace = sortedRounds.find(r => r.round_type === 'third_place');
 
-    const getRoundLabel = (type: string) => {
-        const labels: Record<string, string> = {
-            'round_of_16': 'VÒNG 1/16',
-            'quarter_final': 'VÒNG 1/8',
-            'semi_final': 'TỨ KẾT',
-            'final': 'CHUNG KẾT',
-            'third_place': 'TRANH HẠNG 3',
-        };
-        return labels[type] || 'KNOCKOUT';
+    const getRoundLabel = (round: RoundData) => {
+        // Nếu là tranh hạng 3, luôn trả về tên cố định
+        if (round.round_type === 'third_place') {
+            return 'TRANH HẠNG 3';
+        }
+
+        // Dựa vào số trận để xác định tên vòng
+        const matchCount = round.matches.length;
+
+        if (matchCount === 1) return 'CHUNG KẾT';
+        if (matchCount === 2) return 'BÁN KẾT';
+        if (matchCount === 4) return 'TỨ KẾT';
+        if (matchCount === 8) return 'VÒNG 1/8';
+        if (matchCount === 16) return 'VÒNG 1/16';
+        if (matchCount === 32) return 'VÒNG 1/32';
+
+        // Fallback
+        return round.round_name?.toUpperCase() || 'KNOCKOUT';
     };
 
     // --- LOGIC CĂN CHỈNH KÍCH THƯỚC ĐỘNG ---
@@ -253,7 +262,7 @@ export const KnockoutView = ({
                     {mainRounds.map((round, colIndex) => {
                         const isFinal = round.round_type === 'final';
                         const isLastRound = colIndex === mainRounds.length - 1;
-                        
+
                         // Lấy thông số căn chỉnh khoảng cách dựa trên vòng hiện tại
                         const { offset, space, gap } = getMetrics(colIndex);
 
@@ -267,14 +276,14 @@ export const KnockoutView = ({
                                         ${isFinal ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' : 'bg-slate-700'}
                                     `}>
                                         {isFinal && <Crown className="inline h-3.5 w-3.5 mr-1 mb-0.5" />}
-                                        {getRoundLabel(round.round_type)}
+                                        {getRoundLabel(round)}
                                     </div>
 
                                     {/* Matches */}
                                     <div style={{ marginTop: `${offset}px` }}>
                                         {round.matches.map((match, matchIndex) => (
-                                            <div 
-                                                key={match.id} 
+                                            <div
+                                                key={match.id}
                                                 style={{ marginBottom: matchIndex < round.matches.length - 1 ? `${gap}px` : 0 }}
                                             >
                                                 <BracketMatch
@@ -293,11 +302,11 @@ export const KnockoutView = ({
                                     <div className="flex flex-col w-[48px]">
                                         {/* Spacer tàng hình để đẩy đường nối xuống bằng với Title */}
                                         <div className="mb-6 py-2 opacity-0 text-xs text-center">|</div>
-                                        
+
                                         <div style={{ marginTop: `${offset}px`, paddingTop: `${MATCH_HEIGHT / 2}px` }}>
                                             {Array.from({ length: Math.floor(round.matches.length / 2) }).map((_, pairIndex) => (
-                                                <div 
-                                                    key={pairIndex} 
+                                                <div
+                                                    key={pairIndex}
                                                     style={{ height: `${space}px`, marginBottom: `${space}px` }}
                                                 >
                                                     <svg width="48" height={space} className="overflow-visible">
@@ -320,7 +329,7 @@ export const KnockoutView = ({
                         <div className="ml-8 w-[220px]">
                             <div className="mb-6 px-5 py-2 rounded-full text-xs font-bold text-white text-center shadow-md whitespace-nowrap bg-gradient-to-r from-orange-500 to-orange-600">
                                 <Medal className="inline h-3.5 w-3.5 mr-1 mb-0.5" />
-                                {getRoundLabel('third_place')}
+                                {getRoundLabel(thirdPlace)}
                             </div>
                             <div style={{ marginTop: `${getMetrics(mainRounds.length - 1).offset}px` }}>
                                 <BracketMatch
