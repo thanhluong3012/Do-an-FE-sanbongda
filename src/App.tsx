@@ -75,11 +75,11 @@ const App = () => (
             } />
 
             {/* My Tournaments - Quản lý giải đấu của tôi */}
-            {/* <Route path="/my-tournaments" element={
+            <Route path="/my-tournaments" element={
               <ProtectedRoute>
                 <MyTournaments />
               </ProtectedRoute>
-            } /> */}
+            } />
 
             {/* My Team - Quản lý đội bóng */}
             <Route path="/my-team" element={
