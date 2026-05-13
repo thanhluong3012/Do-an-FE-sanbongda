@@ -15,37 +15,13 @@ import { format as fmtDate, parseISO } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { Match } from '@/services/matchService';
 
-const ROUND_LABELS: Record<string, { label: string; icon: string; color: string }> = {
-    round_of_32: {
-        label: 'Vòng 32',
-        icon: 'R32',
-        color: 'from-blue-100 via-blue-50 to-white border-blue-300',
-    },
-    round_of_16: {
-        label: 'Vòng 16',
-        icon: 'R16',
-        color: 'from-indigo-100 via-indigo-50 to-white border-indigo-300',
-    },
-    quarter_final: {
-        label: 'Tứ kết',
-        icon: 'QF',
-        color: 'from-purple-100 via-purple-50 to-white border-purple-300',
-    },
-    semi_final: {
-        label: 'Bán kết',
-        icon: 'SF',
-        color: 'from-orange-100 via-orange-50 to-white border-orange-300',
-    },
-    final: {
-        label: 'Chung kết',
-        icon: 'FINAL',
-        color: 'from-yellow-100 via-yellow-50 to-white border-yellow-400',
-    },
-    third_place: {
-        label: 'Tranh hạng 3',
-        icon: '3RD',
-        color: 'from-orange-100 via-orange-50 to-white border-orange-400',
-    },
+const ROUND_LABELS: Record<string, { label: string; short: string }> = {
+    round_of_32: { label: 'Vòng 1/16', short: 'R32' },
+    round_of_16: { label: 'Vòng 1/8', short: 'R16' },
+    quarter_final: { label: 'Tứ Kết', short: 'QF' },
+    semi_final: { label: 'Bán Kết', short: 'SF' },
+    final: { label: 'Chung Kết', short: 'FINAL' },
+    third_place: { label: 'Tranh Hạng 3', short: '3RD' },
 };
 
 const ROUND_ORDER: Record<string, number> = {
@@ -71,50 +47,19 @@ const fmtTime = (t: string | null | undefined) => {
 };
 
 const fmtMatchDate = (d: string | null | undefined) => {
-    if (!d) return '—';
-
+    if (!d) return 'Chưa xác định';
     try {
-        return fmtDate(parseISO(d), 'EEE, dd/MM', { locale: vi });
+        return fmtDate(parseISO(d), 'dd/MM', { locale: vi });
     } catch {
         return d;
     }
 };
 
-// Helper function to group matches by date
-const groupMatchesByDate = (matches: Match[]): Record<string, Match[]> => {
-    const grouped: Record<string, Match[]> = {};
-
-    matches.forEach((match) => {
-        const date = match.match_date || 'Chưa xác định';
-        if (!grouped[date]) {
-            grouped[date] = [];
-        }
-        grouped[date].push(match);
-    });
-
-    return grouped;
-};
-
-// Helper function to format date group header
-const formatDateHeader = (dateStr: string): string => {
-    if (dateStr === 'Chưa xác định') return dateStr;
-
-    try {
-        return fmtDate(parseISO(dateStr), 'EEEE, dd/MM/yyyy', { locale: vi });
-    } catch {
-        return dateStr;
-    }
-};
-
-const getRoundColor = (roundType: string): string => {
-    const colors: Record<string, string> = {
-        round_of_32: 'blue',
-        round_of_16: 'indigo',
-        quarter_final: 'purple',
-        semi_final: 'orange',
-        final: 'yellow',
-    };
-    return colors[roundType] || 'slate';
+const getTeamName = (
+    team: Match['home_team'],
+    fallback?: string | null,
+) => {
+    return team?.name || fallback || 'Chưa xác định';
 };
 
 interface RoundData {
@@ -131,226 +76,202 @@ interface KnockoutViewProps {
     onEditScore?: (match: Match) => void;
 }
 
-const getTeamName = (
-    team: Match['home_team'],
-    fallback?: string | null,
-) => {
-    return team?.name || fallback || 'Chưa xác định';
-};
-
-const getMatchStatusLabel = (status?: string) => {
-    switch (status) {
-        case 'completed':
-            return 'Đã kết thúc';
-        case 'in_progress':
-            return 'Đang đá';
-        case 'cancelled':
-            return 'Đã hủy';
-        default:
-            return 'Chưa đá';
-    }
-};
-
-const TeamRow = ({
+// Component for displaying a single team in bracket
+const BracketTeam = ({
     team,
     teamName,
     score,
     isWinner,
-    isLoser,
 }: {
     team?: Match['home_team'];
     teamName: string;
     score?: number | null;
     isWinner: boolean;
-    isLoser: boolean;
 }) => {
     return (
         <div
             className={`
-                flex items-center justify-between gap-2 rounded-xl px-2.5 py-2 transition-all
-                ${isWinner
-                    ? 'bg-emerald-50 border border-emerald-300 shadow-sm'
-                    : 'bg-slate-50 border border-slate-100'
-                }
-                ${isLoser ? 'opacity-60' : ''}
+                flex items-center justify-between px-3 py-1.5 border-b border-emerald-800/20
+                ${isWinner ? 'bg-emerald-700/20 font-bold' : ''}
             `}
         >
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-                <Avatar className="h-7 w-7 border bg-white">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Avatar className="h-5 w-5 border border-white/30">
                     {team?.logo && <AvatarImage src={team.logo} />}
-                    <AvatarFallback className="text-[10px] font-bold">
+                    <AvatarFallback className="text-[8px] font-bold bg-white/90">
                         {initials(teamName)}
                     </AvatarFallback>
                 </Avatar>
-
-                <span
-                    className={`
-                        truncate text-sm
-                        ${isWinner ? 'font-bold text-emerald-700' : 'font-medium text-slate-700'}
-                    `}
-                >
+                <span className="text-xs text-white truncate font-medium">
                     {teamName}
                 </span>
             </div>
-
-            <div
-                className={`
-                    min-w-7 text-right text-xl font-black tabular-nums
-                    ${isWinner ? 'text-emerald-700' : 'text-slate-500'}
-                `}
-            >
+            <span className="text-sm font-bold text-white ml-2 min-w-[20px] text-right">
                 {score ?? '–'}
-            </div>
+            </span>
         </div>
     );
 };
 
-const KnockoutMatchCard = ({
+// Component for a single bracket match
+const BracketMatch = ({
     match,
-    canManage,
-    onEditScore,
     isFinal = false,
     isThirdPlace = false,
-    roundColor = 'slate',
+    canManage,
+    onEditScore,
 }: {
     match: Match;
-    canManage?: boolean;
-    onEditScore?: (m: Match) => void;
     isFinal?: boolean;
     isThirdPlace?: boolean;
-    roundColor?: string;
+    canManage?: boolean;
+    onEditScore?: (m: Match) => void;
 }) => {
     const done = match.status === 'completed';
-    const live = match.status === 'in_progress';
-
     const homeScore = match.home_score ?? null;
     const awayScore = match.away_score ?? null;
-
-    const homeWin =
-        done &&
-        homeScore !== null &&
-        awayScore !== null &&
-        homeScore > awayScore;
-
-    const awayWin =
-        done &&
-        homeScore !== null &&
-        awayScore !== null &&
-        awayScore > homeScore;
-
-    const homeLose = done && awayWin;
-    const awayLose = done && homeWin;
-
+    const homeWin = done && homeScore !== null && awayScore !== null && homeScore > awayScore;
+    const awayWin = done && homeScore !== null && awayScore !== null && awayScore > homeScore;
     const homeName = getTeamName(match.home_team, match.home_from_position);
     const awayName = getTeamName(match.away_team, match.away_from_position);
 
-    // Border color based on round
-    const borderColorClass = {
-        blue: 'border-blue-200 hover:border-blue-300',
-        indigo: 'border-indigo-200 hover:border-indigo-300',
-        purple: 'border-purple-200 hover:border-purple-300',
-        orange: 'border-orange-200 hover:border-orange-300',
-        yellow: 'border-yellow-300 hover:border-yellow-400',
-        slate: 'border-slate-200 hover:border-slate-300',
-    }[roundColor] || 'border-slate-200';
+    const bgColor = isFinal 
+        ? 'bg-gradient-to-br from-yellow-500 to-yellow-600' 
+        : isThirdPlace 
+        ? 'bg-gradient-to-br from-orange-500 to-orange-600'
+        : 'bg-gradient-to-br from-emerald-700 to-emerald-800';
 
     return (
-        <div
-            className={`
-                relative overflow-hidden rounded-2xl border-2 bg-white shadow-sm transition-all
-                hover:-translate-y-0.5 hover:shadow-lg
-                ${live ? 'border-emerald-400 ring-2 ring-emerald-200' : ''}
-                ${isFinal ? 'border-yellow-400 bg-gradient-to-b from-yellow-50 to-white shadow-md ring-2 ring-yellow-200' : ''}
-                ${isThirdPlace ? 'border-orange-400 bg-gradient-to-b from-orange-50 to-white ring-2 ring-orange-200' : ''}
-                ${!isFinal && !isThirdPlace && !live ? borderColorClass : ''}
-            `}
-        >
+        <div className="relative group">
             <div
                 className={`
-                    flex items-center justify-between border-b px-3 py-2
-                    ${isFinal ? 'border-yellow-200 bg-yellow-100/70' : ''}
-                    ${isThirdPlace ? 'border-orange-200 bg-orange-100/70' : ''}
-                    ${!isFinal && !isThirdPlace ? 'border-slate-100 bg-slate-50' : ''}
+                    ${bgColor}
+                    rounded-lg shadow-lg overflow-hidden border-2 
+                    ${isFinal ? 'border-yellow-400' : isThirdPlace ? 'border-orange-400' : 'border-emerald-600'}
+                    min-w-[200px] transition-all hover:shadow-xl hover:scale-105
                 `}
             >
-                <div className="flex items-center gap-2">
-                    {isFinal ? (
-                        <Crown className="h-4 w-4 text-yellow-600" />
-                    ) : isThirdPlace ? (
-                        <Medal className="h-4 w-4 text-orange-600" />
-                    ) : (
-                        <Trophy className="h-4 w-4 text-slate-500" />
-                    )}
-
-                    <span className="text-xs font-bold uppercase tracking-wide text-slate-600">
-                        {match.match_number ? `Trận #${match.match_number}` : 'Knockout'}
-                    </span>
+                {/* Header */}
+                <div className={`
+                    px-3 py-1 text-center border-b 
+                    ${isFinal ? 'border-yellow-400/30 bg-yellow-600/30' : isThirdPlace ? 'border-orange-400/30 bg-orange-600/30' : 'border-emerald-600/30 bg-emerald-800/30'}
+                `}>
+                    <div className="text-[10px] font-bold text-white/90 uppercase tracking-wide">
+                        {match.match_date && fmtTime(match.match_time) && (
+                            <span>{fmtTime(match.match_time)}, ngày {fmtMatchDate(match.match_date)}</span>
+                        )}
+                        {!match.match_date && 'Chưa xác định'}
+                    </div>
                 </div>
 
-                {live ? (
-                    <Badge className="animate-pulse bg-red-500 text-white">
-                        LIVE
-                    </Badge>
-                ) : (
-                    <Badge variant={done ? 'default' : 'outline'} className="text-[10px]">
-                        {getMatchStatusLabel(match.status)}
-                    </Badge>
+                {/* Teams */}
+                <div>
+                    <BracketTeam
+                        team={match.home_team}
+                        teamName={homeName}
+                        score={homeScore}
+                        isWinner={homeWin}
+                    />
+                    <BracketTeam
+                        team={match.away_team}
+                        teamName={awayName}
+                        score={awayScore}
+                        isWinner={awayWin}
+                    />
+                </div>
+
+                {/* Status/Field */}
+                {match.field?.name && (
+                    <div className="px-3 py-1 text-center border-t border-emerald-800/20 bg-emerald-900/20">
+                        <div className="text-[9px] text-white/70 truncate">
+                            {match.field.name}
+                        </div>
+                    </div>
                 )}
             </div>
 
-            <div className="space-y-2 p-3">
-                <TeamRow
-                    team={match.home_team}
-                    teamName={homeName}
-                    score={homeScore}
-                    isWinner={homeWin}
-                    isLoser={homeLose}
-                />
-
-                <TeamRow
-                    team={match.away_team}
-                    teamName={awayName}
-                    score={awayScore}
-                    isWinner={awayWin}
-                    isLoser={awayLose}
-                />
-            </div>
-
-            <div className="space-y-2 border-t border-slate-100 px-3 pb-3 pt-2">
-                <div className="grid grid-cols-1 gap-1 text-xs text-slate-500">
-                    {match.match_date && (
-                        <div className="flex items-center gap-1.5">
-                            <Calendar className="h-3.5 w-3.5" />
-                            <span>{fmtMatchDate(match.match_date)}</span>
-                        </div>
-                    )}
-
-                    {match.match_time && (
-                        <div className="flex items-center gap-1.5">
-                            <Clock className="h-3.5 w-3.5" />
-                            <span>{fmtTime(match.match_time)}</span>
-                        </div>
-                    )}
-
-                    {match.field?.name && (
-                        <div className="flex items-center gap-1.5">
-                            <MapPin className="h-3.5 w-3.5" />
-                            <span className="truncate">{match.field.name}</span>
-                        </div>
-                    )}
-                </div>
-
-                {canManage && match.status !== 'cancelled' && (
+            {/* Edit button on hover */}
+            {canManage && match.status !== 'cancelled' && (
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
                     <Button
                         size="sm"
-                        variant="outline"
-                        className="h-8 w-full rounded-xl text-xs"
+                        variant="secondary"
+                        className="shadow-lg"
                         onClick={() => onEditScore?.(match)}
                     >
-                        <Edit3 className="mr-1 h-3.5 w-3.5" />
-                        {done ? 'Sửa tỷ số' : 'Nhập tỷ số'}
+                        <Edit3 className="h-3 w-3 mr-1" />
+                        {done ? 'Sửa' : 'Nhập'} tỷ số
                     </Button>
-                )}
+                </div>
+            )}
+        </div>
+    );
+};
+// Component for connector lines between matches
+const BracketConnector = ({ height = 100 }: { height?: number }) => (
+    <div className="flex items-center justify-center px-4" style={{ height: `${height}px` }}>
+        <svg width="60" height={height} className="overflow-visible">
+            {/* Horizontal line from match */}
+            <line x1="0" y1={height / 2} x2="30" y2={height / 2} stroke="#64748b" strokeWidth="2" />
+            {/* Vertical line */}
+            <line x1="30" y1="0" x2="30" y2={height} stroke="#64748b" strokeWidth="2" />
+            {/* Horizontal line to next match */}
+            <line x1="30" y1={height / 2} x2="60" y2={height / 2} stroke="#64748b" strokeWidth="2" />
+        </svg>
+    </div>
+);
+
+// Round column component
+const RoundColumn = ({
+    round,
+    canManage,
+    onEditScore,
+    isLastRound = false,
+}: {
+    round: RoundData;
+    canManage?: boolean;
+    onEditScore?: (match: Match) => void;
+    isLastRound?: boolean;
+}) => {
+    const isFinal = round.round_type === 'final';
+    const isThirdPlace = round.round_type === 'third_place';
+    const config = ROUND_LABELS[round.round_type] || { label: round.round_name, short: 'KO' };
+
+    // Calculate spacing based on round
+    const matchSpacing = {
+        'round_of_16': 'gap-4',
+        'quarter_final': 'gap-12',
+        'semi_final': 'gap-24',
+        'final': 'gap-12',
+        'third_place': 'gap-0',
+    }[round.round_type] || 'gap-4';
+
+    return (
+        <div className="flex flex-col items-center">
+            {/* Round title */}
+            <div className={`
+                mb-6 px-6 py-2 rounded-full font-bold text-sm text-white shadow-lg
+                ${isFinal ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' : 
+                  isThirdPlace ? 'bg-gradient-to-r from-orange-500 to-orange-600' : 
+                  'bg-gradient-to-r from-slate-700 to-slate-800'}
+            `}>
+                {isFinal && <Crown className="inline h-4 w-4 mr-1 mb-0.5" />}
+                {isThirdPlace && <Medal className="inline h-4 w-4 mr-1 mb-0.5" />}
+                {config.label.toUpperCase()}
+            </div>
+
+            {/* Matches */}
+            <div className={`flex flex-col ${matchSpacing} justify-center flex-1`}>
+                {round.matches.map((match) => (
+                    <BracketMatch
+                        key={match.id}
+                        match={match}
+                        isFinal={isFinal}
+                        isThirdPlace={isThirdPlace}
+                        canManage={canManage}
+                        onEditScore={onEditScore}
+                    />
+                ))}
             </div>
         </div>
     );
@@ -361,148 +282,90 @@ export const KnockoutView = ({
     canManage,
     onEditScore,
 }: KnockoutViewProps) => {
-    // Separate main rounds and third place
+    // Separate and sort rounds
     const thirdPlaceRound = rounds.find((r) => r.round_type === 'third_place');
-
+    const finalRound = rounds.find((r) => r.round_type === 'final');
+    
     const mainRounds = rounds
-        .filter((round) => round.round_type !== 'third_place')
+        .filter((r) => r.round_type !== 'third_place' && r.round_type !== 'final')
         .sort((a, b) => {
-            const orderA = ROUND_ORDER[a.round_type] ?? a.round_order;
-            const orderB = ROUND_ORDER[b.round_type] ?? b.round_order;
-            return orderA - orderB;
+            const order: Record<string, number> = {
+                'round_of_32': 1,
+                'round_of_16': 2,
+                'quarter_final': 3,
+                'semi_final': 4,
+            };
+            return (order[a.round_type] || 0) - (order[b.round_type] || 0);
         });
 
+    // Add final rounds at the end
+    const orderedRounds = [...mainRounds];
+    if (finalRound) orderedRounds.push(finalRound);
+
     return (
-        <div className="space-y-6">
+        <div className="w-full py-8">
             {/* Header */}
-            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-100 shadow-sm">
-                <div className="border-b border-slate-100 bg-white/50 p-4 backdrop-blur-md md:p-6">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-md">
-                            <Trophy className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-black text-slate-900 md:text-2xl">
-                                Vòng Knockout
-                            </h2>
-                            <p className="text-sm font-medium text-slate-500">
-                                {mainRounds.length} vòng đấu loại trực tiếp
-                            </p>
-                        </div>
-                    </div>
+            <div className="mb-8 text-center">
+                <div className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl shadow-xl">
+                    <Trophy className="h-8 w-8 text-yellow-400" />
+                    <h2 className="text-3xl font-black text-white uppercase tracking-wide">
+                        Lịch Thi Đấu Vòng Knock-Out
+                    </h2>
+                    <Trophy className="h-8 w-8 text-yellow-400" />
                 </div>
             </div>
 
-            {/* Rounds Grid */}
-            {mainRounds.map((round) => {
-                const config = ROUND_LABELS[round.round_type] ?? {
-                    label: round.round_name,
-                    icon: 'KO',
-                    color: 'from-slate-50 to-white border-slate-200',
-                };
-
-                const isFinal = round.round_type === 'final';
-                const roundColor = getRoundColor(round.round_type);
-
-                // If this is final round and we have third place, combine them
-                const showThirdPlace = isFinal && thirdPlaceRound;
-                let allMatches = [...round.matches];
-
-                if (showThirdPlace && thirdPlaceRound) {
-                    // Add third place matches with a flag
-                    allMatches = [
-                        ...thirdPlaceRound.matches.map(m => ({ ...m, _isThirdPlace: true })),
-                        ...allMatches
-                    ];
-                }
-
-                const matchesByDate = groupMatchesByDate(allMatches);
-                const sortedDates = Object.keys(matchesByDate).sort();
-
-                return (
-                    <div
-                        key={round.id}
-                        className={`
-                            overflow-hidden rounded-3xl border bg-white shadow-sm
-                            ${config.color}
-                        `}
-                    >
-                        {/* Round Header */}
-                        <div className={`border-b bg-gradient-to-br px-4 py-4 md:px-6 ${config.color}`}>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className={`
-                                        flex h-10 w-10 items-center justify-center rounded-xl
-                                        ${isFinal ? 'bg-yellow-500' : 'bg-slate-700'}
-                                        text-white shadow-md
-                                    `}>
-                                        {isFinal ? <Crown className="h-5 w-5" /> : <Trophy className="h-5 w-5" />}
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                            {config.icon}
-                                        </p>
-                                        <h3 className="text-lg font-black text-slate-900">
-                                            {config.label}
-                                        </h3>
-                                    </div>
+            {/* Bracket Container */}
+            <div className="relative overflow-x-auto pb-8">
+                <div className="inline-flex min-w-max px-8 gap-2">
+                    {/* Main rounds */}
+                    {orderedRounds.map((round, index) => (
+                        <React.Fragment key={round.id}>
+                            <RoundColumn
+                                round={round}
+                                canManage={canManage}
+                                onEditScore={onEditScore}
+                                isLastRound={index === orderedRounds.length - 1}
+                            />
+                            {/* Add connector between rounds (except after last round) */}
+                            {index < orderedRounds.length - 1 && (
+                                <div className="flex items-center">
+                                    <div className="w-12 h-0.5 bg-slate-300"></div>
                                 </div>
-
-                                <Badge variant="outline" className="bg-white">
-                                    {allMatches.length} trận
-                                </Badge>
-                            </div>
-                        </div>
-
-                        {/* Matches by Date */}
-                        <div className="space-y-6 p-4 md:p-6">
-                            {sortedDates.length === 0 ? (
-                                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 p-8 text-center text-sm font-medium text-slate-400">
-                                    Chưa có trận đấu
-                                </div>
-                            ) : (
-                                sortedDates.map((date) => {
-                                    const dayMatches = matchesByDate[date];
-
-                                    return (
-                                        <div key={date} className="space-y-3">
-                                            {/* Date Header */}
-                                            <div className="flex items-center gap-2">
-                                                <Calendar className="h-4 w-4 text-slate-400" />
-                                                <h4 className="text-sm font-bold text-slate-700">
-                                                    {formatDateHeader(date)}
-                                                </h4>
-                                                <div className="h-px flex-1 bg-slate-200" />
-                                                <span className="text-xs font-medium text-slate-500">
-                                                    {dayMatches.length} trận
-                                                </span>
-                                            </div>
-
-                                            {/* Matches Grid */}
-                                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                                                {dayMatches.map((match) => {
-                                                    const isThirdPlace = (match as any)._isThirdPlace;
-                                                    return (
-                                                        <KnockoutMatchCard
-                                                            key={match.id}
-                                                            match={match}
-                                                            canManage={canManage}
-                                                            onEditScore={onEditScore}
-                                                            isFinal={!isThirdPlace && isFinal}
-                                                            isThirdPlace={isThirdPlace}
-                                                            roundColor={roundColor}
-                                                        />
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    );
-                                })
                             )}
-                        </div>
-                    </div>
-                );
-            })}
+                        </React.Fragment>
+                    ))}
+
+                    {/* Third place match - positioned separately if exists */}
+                    {thirdPlaceRound && (
+                        <>
+                            <div className="w-8"></div>
+                            <RoundColumn
+                                round={thirdPlaceRound}
+                                canManage={canManage}
+                                onEditScore={onEditScore}
+                                isLastRound={true}
+                            />
+                        </>
+                    )}
+                </div>
+            </div>
+
+            {/* Legend */}
+            <div className="mt-8 flex justify-center gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-gradient-to-br from-emerald-700 to-emerald-800 border-2 border-emerald-600"></div>
+                    <span className="text-slate-600">Trận đấu thường</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-gradient-to-br from-yellow-500 to-yellow-600 border-2 border-yellow-400"></div>
+                    <span className="text-slate-600">Chung kết</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-gradient-to-br from-orange-500 to-orange-600 border-2 border-orange-400"></div>
+                    <span className="text-slate-600">Tranh hạng 3</span>
+                </div>
+            </div>
         </div>
     );
 };
