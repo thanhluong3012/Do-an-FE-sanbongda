@@ -15,24 +15,6 @@ import { format as fmtDate, parseISO } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { Match } from '@/services/matchService';
 
-const ROUND_LABELS: Record<string, { label: string; short: string }> = {
-    round_of_32: { label: 'Vòng 1/16', short: 'R32' },
-    round_of_16: { label: 'Vòng 1/8', short: 'R16' },
-    quarter_final: { label: 'Tứ Kết', short: 'QF' },
-    semi_final: { label: 'Bán Kết', short: 'SF' },
-    final: { label: 'Chung Kết', short: 'FINAL' },
-    third_place: { label: 'Tranh Hạng 3', short: '3RD' },
-};
-
-const ROUND_ORDER: Record<string, number> = {
-    round_of_32: 1,
-    round_of_16: 2,
-    quarter_final: 3,
-    semi_final: 4,
-    final: 5,
-    third_place: 6,
-};
-
 const initials = (name: string) =>
     name
         .split(' ')
@@ -91,14 +73,14 @@ const BracketTeam = ({
     return (
         <div
             className={`
-                flex items-center justify-between px-3 py-1.5 border-b border-emerald-800/20
-                ${isWinner ? 'bg-emerald-700/20 font-bold' : ''}
+                flex items-center justify-between px-2.5 py-1.5 border-b border-emerald-800/20 last:border-0
+                ${isWinner ? 'bg-emerald-700/30 font-bold' : ''}
             `}
         >
             <div className="flex items-center gap-2 min-w-0 flex-1">
-                <Avatar className="h-5 w-5 border border-white/30">
+                <Avatar className="h-5 w-5 border border-white/30 flex-shrink-0">
                     {team?.logo && <AvatarImage src={team.logo} />}
-                    <AvatarFallback className="text-[8px] font-bold bg-white/90">
+                    <AvatarFallback className="text-[8px] font-bold bg-white/90 text-slate-800">
                         {initials(teamName)}
                     </AvatarFallback>
                 </Avatar>
@@ -106,7 +88,7 @@ const BracketTeam = ({
                     {teamName}
                 </span>
             </div>
-            <span className="text-sm font-bold text-white ml-2 min-w-[20px] text-right">
+            <span className="text-base font-bold text-white ml-2 min-w-[24px] text-right flex-shrink-0">
                 {score ?? '–'}
             </span>
         </div>
@@ -148,24 +130,26 @@ const BracketMatch = ({
                     ${bgColor}
                     rounded-lg shadow-lg overflow-hidden border-2 
                     ${isFinal ? 'border-yellow-400' : isThirdPlace ? 'border-orange-400' : 'border-emerald-600'}
-                    min-w-[200px] transition-all hover:shadow-xl hover:scale-105
+                    w-[220px] h-[120px] flex flex-col transition-all hover:shadow-xl hover:scale-[1.02]
                 `}
+                title={match.field?.name ? `Sân: ${match.field.name}` : undefined}
             >
-                {/* Header */}
+                {/* Header with date/time */}
                 <div className={`
-                    px-3 py-1 text-center border-b 
+                    px-3 py-1 text-center border-b flex-shrink-0
                     ${isFinal ? 'border-yellow-400/30 bg-yellow-600/30' : isThirdPlace ? 'border-orange-400/30 bg-orange-600/30' : 'border-emerald-600/30 bg-emerald-800/30'}
                 `}>
-                    <div className="text-[10px] font-bold text-white/90 uppercase tracking-wide">
-                        {match.match_date && fmtTime(match.match_time) && (
-                            <span>{fmtTime(match.match_time)}, ngày {fmtMatchDate(match.match_date)}</span>
+                    <div className="text-[9px] font-bold text-white/90 uppercase tracking-wide leading-tight">
+                        {match.match_date && fmtTime(match.match_time) ? (
+                            <span>{fmtTime(match.match_time)}, {fmtMatchDate(match.match_date)}</span>
+                        ) : (
+                            'Chưa xác định'
                         )}
-                        {!match.match_date && 'Chưa xác định'}
                     </div>
                 </div>
 
                 {/* Teams */}
-                <div>
+                <div className="flex-1 flex flex-col justify-center">
                     <BracketTeam
                         team={match.home_team}
                         teamName={homeName}
@@ -179,100 +163,27 @@ const BracketMatch = ({
                         isWinner={awayWin}
                     />
                 </div>
-
-                {/* Status/Field */}
-                {match.field?.name && (
-                    <div className="px-3 py-1 text-center border-t border-emerald-800/20 bg-emerald-900/20">
-                        <div className="text-[9px] text-white/70 truncate">
-                            {match.field.name}
-                        </div>
-                    </div>
-                )}
             </div>
 
             {/* Edit button on hover */}
             {canManage && match.status !== 'cancelled' && (
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex flex-col items-center justify-center gap-1">
+                    {match.field?.name && (
+                        <div className="text-[10px] text-white/80 font-medium px-2 text-center">
+                            📍 {match.field.name}
+                        </div>
+                    )}
                     <Button
                         size="sm"
                         variant="secondary"
-                        className="shadow-lg"
+                        className="shadow-lg text-xs h-7"
                         onClick={() => onEditScore?.(match)}
                     >
                         <Edit3 className="h-3 w-3 mr-1" />
-                        {done ? 'Sửa' : 'Nhập'} tỷ số
+                        {done ? 'Sửa' : 'Nhập'}
                     </Button>
                 </div>
             )}
-        </div>
-    );
-};
-// Component for connector lines between matches
-const BracketConnector = ({ height = 100 }: { height?: number }) => (
-    <div className="flex items-center justify-center px-4" style={{ height: `${height}px` }}>
-        <svg width="60" height={height} className="overflow-visible">
-            {/* Horizontal line from match */}
-            <line x1="0" y1={height / 2} x2="30" y2={height / 2} stroke="#64748b" strokeWidth="2" />
-            {/* Vertical line */}
-            <line x1="30" y1="0" x2="30" y2={height} stroke="#64748b" strokeWidth="2" />
-            {/* Horizontal line to next match */}
-            <line x1="30" y1={height / 2} x2="60" y2={height / 2} stroke="#64748b" strokeWidth="2" />
-        </svg>
-    </div>
-);
-
-// Round column component
-const RoundColumn = ({
-    round,
-    canManage,
-    onEditScore,
-    isLastRound = false,
-}: {
-    round: RoundData;
-    canManage?: boolean;
-    onEditScore?: (match: Match) => void;
-    isLastRound?: boolean;
-}) => {
-    const isFinal = round.round_type === 'final';
-    const isThirdPlace = round.round_type === 'third_place';
-    const config = ROUND_LABELS[round.round_type] || { label: round.round_name, short: 'KO' };
-
-    // Calculate spacing based on round
-    const matchSpacing = {
-        'round_of_16': 'gap-4',
-        'quarter_final': 'gap-12',
-        'semi_final': 'gap-24',
-        'final': 'gap-12',
-        'third_place': 'gap-0',
-    }[round.round_type] || 'gap-4';
-
-    return (
-        <div className="flex flex-col items-center">
-            {/* Round title */}
-            <div className={`
-                mb-6 px-6 py-2 rounded-full font-bold text-sm text-white shadow-lg
-                ${isFinal ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' : 
-                  isThirdPlace ? 'bg-gradient-to-r from-orange-500 to-orange-600' : 
-                  'bg-gradient-to-r from-slate-700 to-slate-800'}
-            `}>
-                {isFinal && <Crown className="inline h-4 w-4 mr-1 mb-0.5" />}
-                {isThirdPlace && <Medal className="inline h-4 w-4 mr-1 mb-0.5" />}
-                {config.label.toUpperCase()}
-            </div>
-
-            {/* Matches */}
-            <div className={`flex flex-col ${matchSpacing} justify-center flex-1`}>
-                {round.matches.map((match) => (
-                    <BracketMatch
-                        key={match.id}
-                        match={match}
-                        isFinal={isFinal}
-                        isThirdPlace={isThirdPlace}
-                        canManage={canManage}
-                        onEditScore={onEditScore}
-                    />
-                ))}
-            </div>
         </div>
     );
 };
@@ -282,28 +193,49 @@ export const KnockoutView = ({
     canManage,
     onEditScore,
 }: KnockoutViewProps) => {
-    // Separate and sort rounds
-    const thirdPlaceRound = rounds.find((r) => r.round_type === 'third_place');
-    const finalRound = rounds.find((r) => r.round_type === 'final');
-    
-    const mainRounds = rounds
-        .filter((r) => r.round_type !== 'third_place' && r.round_type !== 'final')
-        .sort((a, b) => {
-            const order: Record<string, number> = {
-                'round_of_32': 1,
-                'round_of_16': 2,
-                'quarter_final': 3,
-                'semi_final': 4,
-            };
-            return (order[a.round_type] || 0) - (order[b.round_type] || 0);
-        });
+    // Sort rounds by order
+    const sortedRounds = [...rounds].sort((a, b) => {
+        const order: Record<string, number> = {
+            'round_of_16': 1,
+            'quarter_final': 2,
+            'semi_final': 3,
+            'final': 4,
+            'third_place': 5,
+        };
+        return (order[a.round_type] || 0) - (order[b.round_type] || 0);
+    });
 
-    // Add final rounds at the end
-    const orderedRounds = [...mainRounds];
-    if (finalRound) orderedRounds.push(finalRound);
+    // Separate third place
+    const mainRounds = sortedRounds.filter(r => r.round_type !== 'third_place');
+    const thirdPlace = sortedRounds.find(r => r.round_type === 'third_place');
+
+    const getRoundLabel = (type: string) => {
+        const labels: Record<string, string> = {
+            'round_of_16': 'VÒNG 1/16',
+            'quarter_final': 'VÒNG 1/8',
+            'semi_final': 'TỨ KẾT',
+            'final': 'CHUNG KẾT',
+            'third_place': 'TRANH HẠNG 3',
+        };
+        return labels[type] || 'KNOCKOUT';
+    };
+
+    // --- LOGIC CĂN CHỈNH KÍCH THƯỚC ĐỘNG ---
+    const MATCH_HEIGHT = 120; // Chiều cao cố định của 1 thẻ trận đấu
+    const BASE_GAP = 40;      // Khoảng cách giữa 2 thẻ ở vòng đầu tiên
+
+    const getMetrics = (colIndex: number) => {
+        let offset = 0;
+        let space = MATCH_HEIGHT + BASE_GAP;
+        for (let i = 0; i < colIndex; i++) {
+            offset += space / 2;
+            space *= 2;
+        }
+        return { offset, space, gap: space - MATCH_HEIGHT };
+    };
 
     return (
-        <div className="w-full py-8">
+        <div className="w-full py-8 bg-gradient-to-br from-slate-50 via-white to-slate-100 rounded-3xl">
             {/* Header */}
             <div className="mb-8 text-center">
                 <div className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl shadow-xl">
@@ -316,54 +248,106 @@ export const KnockoutView = ({
             </div>
 
             {/* Bracket Container */}
-            <div className="relative overflow-x-auto pb-8">
-                <div className="inline-flex min-w-max px-8 gap-2">
-                    {/* Main rounds */}
-                    {orderedRounds.map((round, index) => (
-                        <React.Fragment key={round.id}>
-                            <RoundColumn
-                                round={round}
-                                canManage={canManage}
-                                onEditScore={onEditScore}
-                                isLastRound={index === orderedRounds.length - 1}
-                            />
-                            {/* Add connector between rounds (except after last round) */}
-                            {index < orderedRounds.length - 1 && (
-                                <div className="flex items-center">
-                                    <div className="w-12 h-0.5 bg-slate-300"></div>
-                                </div>
-                            )}
-                        </React.Fragment>
-                    ))}
+            <div className="relative overflow-auto pb-12 pt-4">
+                <div className="inline-flex items-start px-8 min-w-max">
+                    {mainRounds.map((round, colIndex) => {
+                        const isFinal = round.round_type === 'final';
+                        const isLastRound = colIndex === mainRounds.length - 1;
+                        
+                        // Lấy thông số căn chỉnh khoảng cách dựa trên vòng hiện tại
+                        const { offset, space, gap } = getMetrics(colIndex);
 
-                    {/* Third place match - positioned separately if exists */}
-                    {thirdPlaceRound && (
-                        <>
-                            <div className="w-8"></div>
-                            <RoundColumn
-                                round={thirdPlaceRound}
-                                canManage={canManage}
-                                onEditScore={onEditScore}
-                                isLastRound={true}
-                            />
-                        </>
+                        return (
+                            <React.Fragment key={round.id}>
+                                {/* Round Column */}
+                                <div className="flex flex-col w-[220px]">
+                                    {/* Round Title */}
+                                    <div className={`
+                                        mb-6 px-5 py-2 rounded-full text-xs font-bold text-white text-center shadow-md whitespace-nowrap
+                                        ${isFinal ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' : 'bg-slate-700'}
+                                    `}>
+                                        {isFinal && <Crown className="inline h-3.5 w-3.5 mr-1 mb-0.5" />}
+                                        {getRoundLabel(round.round_type)}
+                                    </div>
+
+                                    {/* Matches */}
+                                    <div style={{ marginTop: `${offset}px` }}>
+                                        {round.matches.map((match, matchIndex) => (
+                                            <div 
+                                                key={match.id} 
+                                                style={{ marginBottom: matchIndex < round.matches.length - 1 ? `${gap}px` : 0 }}
+                                            >
+                                                <BracketMatch
+                                                    match={match}
+                                                    isFinal={isFinal}
+                                                    canManage={canManage}
+                                                    onEditScore={onEditScore}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Connector Lines */}
+                                {!isLastRound && round.matches.length > 0 && (
+                                    <div className="flex flex-col w-[48px]">
+                                        {/* Spacer tàng hình để đẩy đường nối xuống bằng với Title */}
+                                        <div className="mb-6 py-2 opacity-0 text-xs text-center">|</div>
+                                        
+                                        <div style={{ marginTop: `${offset}px`, paddingTop: `${MATCH_HEIGHT / 2}px` }}>
+                                            {Array.from({ length: Math.floor(round.matches.length / 2) }).map((_, pairIndex) => (
+                                                <div 
+                                                    key={pairIndex} 
+                                                    style={{ height: `${space}px`, marginBottom: `${space}px` }}
+                                                >
+                                                    <svg width="48" height={space} className="overflow-visible">
+                                                        <line x1="0" y1="0" x2="24" y2="0" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                        <line x1="0" y1={space} x2="24" y2={space} stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                        <line x1="24" y1="0" x2="24" y2={space} stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                        <line x1="24" y1={space / 2} x2="48" y2={space / 2} stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                    </svg>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
+
+                    {/* Third Place */}
+                    {thirdPlace && thirdPlace.matches.length > 0 && (
+                        <div className="ml-8 w-[220px]">
+                            <div className="mb-6 px-5 py-2 rounded-full text-xs font-bold text-white text-center shadow-md whitespace-nowrap bg-gradient-to-r from-orange-500 to-orange-600">
+                                <Medal className="inline h-3.5 w-3.5 mr-1 mb-0.5" />
+                                {getRoundLabel('third_place')}
+                            </div>
+                            <div style={{ marginTop: `${getMetrics(mainRounds.length - 1).offset}px` }}>
+                                <BracketMatch
+                                    match={thirdPlace.matches[0]}
+                                    isThirdPlace={true}
+                                    canManage={canManage}
+                                    onEditScore={onEditScore}
+                                />
+                            </div>
+                        </div>
                     )}
                 </div>
             </div>
 
             {/* Legend */}
-            <div className="mt-8 flex justify-center gap-6 text-sm">
+            <div className="mt-8 flex justify-center gap-6 text-sm flex-wrap px-4">
                 <div className="flex items-center gap-2">
                     <div className="w-4 h-4 rounded bg-gradient-to-br from-emerald-700 to-emerald-800 border-2 border-emerald-600"></div>
-                    <span className="text-slate-600">Trận đấu thường</span>
+                    <span className="text-slate-700 font-medium">Trận đấu thường</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="w-4 h-4 rounded bg-gradient-to-br from-yellow-500 to-yellow-600 border-2 border-yellow-400"></div>
-                    <span className="text-slate-600">Chung kết</span>
+                    <span className="text-slate-700 font-medium">Chung kết</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="w-4 h-4 rounded bg-gradient-to-br from-orange-500 to-orange-600 border-2 border-orange-400"></div>
-                    <span className="text-slate-600">Tranh hạng 3</span>
+                    <span className="text-slate-700 font-medium">Tranh hạng 3</span>
                 </div>
             </div>
         </div>
