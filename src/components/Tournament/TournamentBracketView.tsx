@@ -67,7 +67,7 @@ interface Props {
   bracket?: TournamentBracket | null;
   canManage?: boolean;
   onScoreUpdated?: () => void;
-  myTeamId?: number;
+  userTeamIds?: number[]; // Danh sách ID của các đội mà user là captain
 }
 
 export const TournamentBracketView = ({
@@ -76,7 +76,7 @@ export const TournamentBracketView = ({
   bracket,
   canManage,
   onScoreUpdated,
-  myTeamId,
+  userTeamIds = [],
 }: Props) => {
   const { toast } = useToast();
 
@@ -369,7 +369,7 @@ export const TournamentBracketView = ({
                 <MatchCard
                   key={m.id}
                   match={m}
-                  highlightTeamId={filterTeamId ?? myTeamId}
+                  userTeamIds={filterTeamId ? [filterTeamId] : userTeamIds}
                   canManage={canManage}
                   onEditScore={handleEditScore}
                   onEditField={handleEditField}
@@ -425,7 +425,7 @@ export const TournamentBracketView = ({
               {groups[activeGroup] && (
                 <GroupView
                   group={groups[activeGroup]}
-                  highlightTeamId={myTeamId}
+                  userTeamIds={userTeamIds}
                   canManage={canManage}
                   onTeamClick={handleTeamClick}
                   onEditScore={handleEditScore}
@@ -443,6 +443,7 @@ export const TournamentBracketView = ({
                 rounds={knockoutRounds}
                 canManage={canManage}
                 onEditScore={handleEditScore}
+                userTeamIds={userTeamIds}
               />
             </TabsContent>
           )}
@@ -458,7 +459,7 @@ export const TournamentBracketView = ({
                     className={`
                       flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all
                       ${filterTeamId === t.id ? 'bg-primary text-primary-foreground border-primary shadow-md' :
-                        t.id === myTeamId ? 'border-primary text-primary bg-primary/5 hover:bg-primary/10' :
+                        userTeamIds.includes(t.id) ? 'border-primary text-primary bg-primary/5 hover:bg-primary/10' :
                           'border-border hover:border-primary/50 hover:shadow-sm'}
                     `}
                     onClick={() =>
@@ -470,7 +471,7 @@ export const TournamentBracketView = ({
                       <AvatarFallback className="text-xs">{initials(t.name)}</AvatarFallback>
                     </Avatar>
                     <span className="font-medium">{t.name}</span>
-                    {t.id === myTeamId && <Badge className="text-xs h-5">Tôi</Badge>}
+                    {userTeamIds.includes(t.id) && <Badge className="text-xs h-5">Tôi</Badge>}
                   </button>
                 ))}
               </div>

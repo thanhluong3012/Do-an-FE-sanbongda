@@ -234,6 +234,34 @@ const TournamentDetail = () => {
     return result;
   }, [bracket]);
 
+  // Calculate user's team IDs (teams where user is captain)
+  const userTeamIds = useMemo(() => {
+    if (!user) return [];
+
+    // Get teams from multiple sources
+    const allTeams = [
+      ...teams,
+      ...(bracket?.teams || []),
+      ...(tournament?.teams || []),
+      ...(registrations
+        .filter((r: any) => r.team)
+        .map((r: any) => r.team) || [])
+    ];
+
+    // Filter unique teams where user is captain
+    const uniqueTeamIds = new Set<number>();
+    allTeams.forEach((team: any) => {
+      if (team && (
+        String(team.captain_id) === String(user.id) ||
+        String(team.captain_user_id) === String(user.id)
+      )) {
+        uniqueTeamIds.add(team.id);
+      }
+    });
+
+    return Array.from(uniqueTeamIds);
+  }, [user, teams, bracket?.teams, tournament?.teams, registrations]);
+
   useEffect(() => {
     if (tournamentId) {
       loadTournament();
@@ -895,7 +923,7 @@ const TournamentDetail = () => {
                     {bookingsLoading && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
                   </CardTitle>
                 </CardHeader>
-                
+
                 <CardContent className="px-0">
                   {bookingsError ? (
                     <div className="p-4 bg-red-50 text-red-700 rounded-lg border border-red-100 flex items-center justify-between">
@@ -916,7 +944,7 @@ const TournamentDetail = () => {
                           <Card key={booking.id} className="relative overflow-hidden border border-slate-200 shadow-sm rounded-2xl bg-white hover:shadow-md transition-shadow">
                             {/* Accent bar */}
                             <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500" />
-                            
+
                             <CardContent className="p-5">
                               {/* Header Section */}
                               <div className="flex justify-between items-start mb-4">
@@ -977,7 +1005,7 @@ const TournamentDetail = () => {
                               {booking.field?.field_cluster?.phone && (
                                 <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
                                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Liên hệ chủ sân</span>
-                                  <a 
+                                  <a
                                     href={`tel:${booking.field.field_cluster.phone}`}
                                     className="text-[13px] font-bold text-blue-600 hover:underline flex items-center gap-1.5"
                                   >
@@ -1093,11 +1121,7 @@ const TournamentDetail = () => {
                 bracket={bracket}
                 canManage={canManage}
                 onScoreUpdated={loadBracket}
-                myTeamId={
-                  user
-                    ? (teams.find((t) => String(t.captain_id) === String(user.id) || String((t as any).captain_user_id) === String(user.id))?.id)
-                    : undefined
-                }
+                userTeamIds={userTeamIds}
               />
             ) : (
               <Card className="border-yellow-200 bg-yellow-50">

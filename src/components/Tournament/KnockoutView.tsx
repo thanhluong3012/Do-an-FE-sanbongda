@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -10,6 +10,8 @@ import {
     Edit3,
     Crown,
     Medal,
+    Target,
+    Filter,
 } from 'lucide-react';
 import { format as fmtDate, parseISO } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -56,6 +58,7 @@ interface KnockoutViewProps {
     rounds: RoundData[];
     canManage?: boolean;
     onEditScore?: (match: Match) => void;
+    userTeamIds?: number[]; // Danh sách ID của các đội mà user là captain
 }
 
 // Component for displaying a single team in bracket
@@ -102,12 +105,14 @@ const BracketMatch = ({
     isThirdPlace = false,
     canManage,
     onEditScore,
+    isUserMatch = false,
 }: {
     match: Match;
     isFinal?: boolean;
     isThirdPlace?: boolean;
     canManage?: boolean;
     onEditScore?: (m: Match) => void;
+    isUserMatch?: boolean;
 }) => {
     const done = match.status === 'completed';
     const homeScore = match.home_score ?? null;
@@ -123,14 +128,32 @@ const BracketMatch = ({
             ? 'bg-gradient-to-br from-orange-500 to-orange-600'
             : 'bg-gradient-to-br from-emerald-700 to-emerald-800';
 
+    // Highlight match if user team is playing
+    const borderColor = isUserMatch
+        ? 'border-blue-500 ring-4 ring-blue-300/50'
+        : isFinal
+            ? 'border-yellow-400'
+            : isThirdPlace
+                ? 'border-orange-400'
+                : 'border-emerald-600';
+
     return (
-        <div className="relative group">
+        <div className="relative group" data-user-match={isUserMatch ? 'true' : 'false'}>
+            {isUserMatch && (
+                <div className="absolute -top-2 -right-2 z-10">
+                    <Badge className="bg-blue-600 text-white shadow-lg animate-pulse">
+                        <Target className="w-3 h-3 mr-1" />
+                        Đội của bạn
+                    </Badge>
+                </div>
+            )}
             <div
                 className={`
                     ${bgColor}
                     rounded-lg shadow-lg overflow-hidden border-2 
-                    ${isFinal ? 'border-yellow-400' : isThirdPlace ? 'border-orange-400' : 'border-emerald-600'}
+                    ${borderColor}
                     w-[220px] h-[120px] flex flex-col transition-all hover:shadow-xl hover:scale-[1.02]
+                    ${isUserMatch ? 'ring-offset-2 shadow-blue-400/50' : ''}
                 `}
                 title={match.field?.name ? `Sân: ${match.field.name}` : undefined}
             >
@@ -198,7 +221,32 @@ export const KnockoutView = ({
     rounds,
     canManage,
     onEditScore,
+    userTeamIds = [],
 }: KnockoutViewProps) => {
+    const [showOnlyUserMatches, setShowOnlyUserMatches] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // Helper function to check if a match involves user's team
+    const isUserMatch = (match: Match) => {
+        if (!userTeamIds || userTeamIds.length === 0) return false;
+        return (
+            (match.home_team_id && userTeamIds.includes(match.home_team_id)) ||
+            (match.away_team_id && userTeamIds.includes(match.away_team_id))
+        );
+    };
+
+    // Scroll to first user match
+    const scrollToUserMatch = () => {
+        const firstUserMatch = containerRef.current?.querySelector('[data-user-match="true"]');
+        if (firstUserMatch) {
+            firstUserMatch.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        }
+    };
+
+    // Count user matches
+    const userMatchCount = rounds.reduce((count, round) => {
+        return count + round.matches.filter(isUserMatch).length;
+    }, 0);
     // Sort rounds by order
     const sortedRounds = [...rounds].sort((a, b) => {
         const order: Record<string, number> = {
@@ -211,9 +259,17 @@ export const KnockoutView = ({
         return (order[a.round_type] || 0) - (order[b.round_type] || 0);
     });
 
+    // Filter rounds if show only user matches is enabled
+    const filteredRounds = showOnlyUserMatches
+        ? sortedRounds.map(round => ({
+            ...round,
+            matches: round.matches.filter(isUserMatch)
+        })).filter(round => round.matches.length > 0)
+        : sortedRounds;
+
     // Separate third place
-    const mainRounds = sortedRounds.filter(r => r.round_type !== 'third_place');
-    const thirdPlace = sortedRounds.find(r => r.round_type === 'third_place');
+    const mainRounds = filteredRounds.filter(r => r.round_type !== 'third_place');
+    const thirdPlace = filteredRounds.find(r => r.round_type === 'third_place');
 
     const getRoundLabel = (round: RoundData) => {
         // Nếu là tranh hạng 3, luôn trả về tên cố định
@@ -249,6 +305,7 @@ export const KnockoutView = ({
         return { offset, space, gap: space - MATCH_HEIGHT };
     };
 
+
     return (
         <div className="w-full py-8 bg-gradient-to-br from-slate-50 via-white to-slate-100 rounded-3xl">
             {/* Header */}
@@ -262,8 +319,35 @@ export const KnockoutView = ({
                 </div>
             </div>
 
+            {/* User Team Controls */}
+            {userTeamIds.length > 0 && userMatchCount > 0 && (
+                <div className="mb-6 flex justify-center gap-3 flex-wrap">
+                    {/* <Button
+                        size="sm"
+                        variant={showOnlyUserMatches ? 'default' : 'outline'}
+                        onClick={() => setShowOnlyUserMatches(!showOnlyUserMatches)}
+                        className="gap-2"
+                    >
+                        <Filter className="w-4 h-4" />
+                        {showOnlyUserMatches ? 'Hiện tất cả trận' : 'Chỉ xem trận của tôi'}
+                        <Badge variant="secondary" className="ml-1">{userMatchCount}</Badge>
+                    </Button> */}
+                    {!showOnlyUserMatches && (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={scrollToUserMatch}
+                            className="gap-2"
+                        >
+                            <Target className="w-4 h-4" />
+                            Tới trận của tôi
+                        </Button>
+                    )}
+                </div>
+            )}
+
             {/* Bracket Container */}
-            <div className="relative overflow-auto pb-12 pt-4">
+            <div ref={containerRef} className="relative overflow-auto pb-12 pt-4">
                 <div className="inline-flex items-start px-8 min-w-max">
                     {mainRounds.map((round, colIndex) => {
                         const isFinal = round.round_type === 'final';
@@ -297,6 +381,7 @@ export const KnockoutView = ({
                                                     isFinal={isFinal}
                                                     canManage={canManage}
                                                     onEditScore={onEditScore}
+                                                    isUserMatch={isUserMatch(match)}
                                                 />
                                             </div>
                                         ))}
@@ -343,6 +428,7 @@ export const KnockoutView = ({
                                     isThirdPlace={true}
                                     canManage={canManage}
                                     onEditScore={onEditScore}
+                                    isUserMatch={isUserMatch(thirdPlace.matches[0])}
                                 />
                             </div>
                         </div>

@@ -27,7 +27,8 @@ interface GroupData {
 
 interface GroupViewProps {
     group: GroupData;
-    highlightTeamId?: number;
+    highlightTeamId?: number; // Legacy: backward compatibility
+    userTeamIds?: number[]; // Danh sách ID của các đội mà user là captain
     canManage?: boolean;
     onTeamClick?: (id: number, name: string) => void;
     onEditScore?: (match: Match) => void;
@@ -38,12 +39,15 @@ interface GroupViewProps {
 export const GroupView = ({
     group,
     highlightTeamId,
+    userTeamIds = [],
     canManage,
     onTeamClick,
     onEditScore,
     onEditField,
     onEditSchedule,
 }: GroupViewProps) => {
+    // Support both legacy highlightTeamId and new userTeamIds
+    const teamsToHighlight = userTeamIds.length > 0 ? userTeamIds : (highlightTeamId ? [highlightTeamId] : []);
     return (
         <div className="space-y-6">
             {/* Group Header */}
@@ -106,7 +110,7 @@ export const GroupView = ({
                                 <MatchCard
                                     key={match.id}
                                     match={match}
-                                    highlightTeamId={highlightTeamId}
+                                    userTeamIds={teamsToHighlight}
                                     canManage={canManage}
                                     onEditScore={onEditScore}
                                     onEditField={onEditField}

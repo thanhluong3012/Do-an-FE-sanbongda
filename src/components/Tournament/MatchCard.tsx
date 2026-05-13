@@ -72,7 +72,8 @@ const fmtTime = (t: string | null | undefined) => {
 
 interface MatchCardProps {
     match: Match;
-    highlightTeamId?: number;
+    highlightTeamId?: number; // Legacy: backward compatibility
+    userTeamIds?: number[]; // Danh sách ID của các đội mà user là captain
     onEditScore?: (m: Match) => void;
     onEditField?: (m: Match) => void;
     onEditSchedule?: (m: Match) => void;
@@ -83,6 +84,7 @@ interface MatchCardProps {
 export const MatchCard = ({
     match,
     highlightTeamId,
+    userTeamIds = [],
     onEditScore,
     onEditField,
     onEditSchedule,
@@ -111,8 +113,11 @@ export const MatchCard = ({
 
     const isDraw = done && homeScore === awayScore;
 
-    const isMyMatch =
-        !!highlightTeamId && (homeId === highlightTeamId || awayId === highlightTeamId);
+    // Support both legacy highlightTeamId and new userTeamIds
+    const teamsToHighlight = userTeamIds.length > 0 ? userTeamIds : (highlightTeamId ? [highlightTeamId] : []);
+    const isMyMatch = teamsToHighlight.length > 0 && (homeId && teamsToHighlight.includes(homeId) || awayId && teamsToHighlight.includes(awayId));
+    const isHomeHighlighted = homeId && teamsToHighlight.includes(homeId);
+    const isAwayHighlighted = awayId && teamsToHighlight.includes(awayId);
 
     const fieldName = match.field?.name;
     const clusterName = match.field?.field_cluster?.name;
@@ -165,7 +170,7 @@ export const MatchCard = ({
                         className={`
                             flex min-w-0 flex-col items-center rounded-xl px-2 py-3 text-center
                             ${homeWin ? 'bg-emerald-50 ring-1 ring-emerald-200' : ''}
-                            ${highlightTeamId === homeId ? 'bg-primary/10 ring-1 ring-primary/20' : ''}
+                            ${isHomeHighlighted ? 'bg-primary/10 ring-1 ring-primary/20' : ''}
                         `}
                     >
                         <Avatar
@@ -190,7 +195,7 @@ export const MatchCard = ({
                         </div>
 
                         <div className="mt-1 h-5">
-                            {highlightTeamId === homeId && (
+                            {isHomeHighlighted && (
                                 <Badge className="h-5 rounded-full px-2 text-[10px]">
                                     Đội của tôi
                                 </Badge>
@@ -240,7 +245,7 @@ export const MatchCard = ({
                         className={`
                             flex min-w-0 flex-col items-center rounded-xl px-2 py-3 text-center
                             ${awayWin ? 'bg-emerald-50 ring-1 ring-emerald-200' : ''}
-                            ${highlightTeamId === awayId ? 'bg-primary/10 ring-1 ring-primary/20' : ''}
+                            ${isAwayHighlighted ? 'bg-primary/10 ring-1 ring-primary/20' : ''}
                         `}
                     >
                         <Avatar
@@ -265,7 +270,7 @@ export const MatchCard = ({
                         </div>
 
                         <div className="mt-1 h-5">
-                            {highlightTeamId === awayId && (
+                            {isAwayHighlighted && (
                                 <Badge className="h-5 rounded-full px-2 text-[10px]">
                                     Đội của tôi
                                 </Badge>
