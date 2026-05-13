@@ -35,7 +35,7 @@ const Tournaments = () => {
   const [isLoadingMy, setIsLoadingMy] = useState(!!user); // Chỉ loading nếu có user (tab mặc định là my)
 
   // Tab mặc định: nếu đã đăng nhập thì hiển thị "Quản lý giải đấu của tôi", nếu không thì "Các giải đấu"
-  const [activeTab, setActiveTab] = useState(user ? 'my' : 'public');
+  const [activeTab, setActiveTab] = useState('public');
 
   // Load dữ liệu ban đầu dựa vào tab mặc định
   useEffect(() => {
@@ -158,14 +158,6 @@ const Tournaments = () => {
             >
               Các giải đấu
             </TabsTrigger>
-            {user && (
-              <TabsTrigger
-                value="my"
-                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md transition-all duration-200"
-              >
-                Quản lý giải đấu của tôi
-              </TabsTrigger>
-            )}
           </TabsList>
 
           {/* Tab: Các giải đấu (Public) */}
@@ -247,104 +239,7 @@ const Tournaments = () => {
             )}
           </TabsContent>
 
-          {/* Tab: Quản lý giải đấu của tôi */}
-          {user && (
-            <TabsContent value="my">
-              {/* Filters */}
-              <Card className="mb-8">
-                <CardContent className="pt-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                      <Input
-                        placeholder="Tìm kiếm giải đấu..."
-                        value={mySearchQuery}
-                        onChange={(e) => setMySearchQuery(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
-
-                    <Select value={myFilterParticipation} onValueChange={setMyFilterParticipation}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Loại tham gia" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Tất cả loại</SelectItem>
-                        <SelectItem value="organizer">🎯 Tổ chức</SelectItem>
-                        <SelectItem value="participant">⚽ Tham gia</SelectItem>
-                        <SelectItem value="both">👑 Tổ chức & Tham gia</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    <Select value={myFilterStatus} onValueChange={setMyFilterStatus}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Trạng thái" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Tất cả trạng thái</SelectItem>
-                        <SelectItem value="draft">Bản nháp</SelectItem>
-                        <SelectItem value="open">Đang mở đăng ký</SelectItem>
-                        <SelectItem value="in_progress">Đang diễn ra</SelectItem>
-                        <SelectItem value="completed">Đã kết thúc</SelectItem>
-                        <SelectItem value="cancelled">Đã hủy</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    <Select value={myFilterFormat} onValueChange={setMyFilterFormat}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Thể thức" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Tất cả thể thức</SelectItem>
-                        <SelectItem value="round_robin">Vòng tròn</SelectItem>
-                        <SelectItem value="knockout">Loại trực tiếp</SelectItem>
-                        <SelectItem value="group_knockout">Bảng + Loại trực tiếp</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Loading State */}
-              {isLoadingMy && (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                </div>
-              )}
-
-              {/* Tournaments Grid */}
-              {!isLoadingMy && filteredMyTournaments.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredMyTournaments.map((tournament) => (
-                    <TournamentCard
-                      key={tournament.id}
-                      tournament={tournament}
-                      isManager={true}
-                      showActions={true}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Empty State */}
-              {!isLoadingMy && filteredMyTournaments.length === 0 && (
-                <Card className="p-12">
-                  <div className="text-center">
-                    <Trophy className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Chưa có giải đấu nào</h3>
-                    <p className="text-muted-foreground mb-4">
-                      {mySearchQuery || myFilterStatus !== 'all' || myFilterFormat !== 'all' || myFilterParticipation !== 'all'
-                        ? 'Thử thay đổi bộ lọc hoặc tìm kiếm khác'
-                        : 'Bạn chưa tổ chức hoặc tham gia giải đấu nào. Hãy tạo giải đấu đầu tiên hoặc đăng ký tham gia giải đấu khác!'}
-                    </p>
-                    <Button asChild>
-                      <Link to="/tournament/create">Tạo giải đấu mới</Link>
-                    </Button>
-                  </div>
-                </Card>
-              )}
-            </TabsContent>
-          )}
+          
         </Tabs>
       </main>
       <Footer />

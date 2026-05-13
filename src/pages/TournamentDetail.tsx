@@ -416,7 +416,6 @@ const TournamentDetail = () => {
       toast({ title: 'Lỗi', description: err.response?.data?.message || 'Không thể duyệt đăng ký', variant: 'destructive' });
     }
   };
-
   const handleRejectRegistration = async (registrationId: number, reason: string) => {
     try {
       await registrationService.reject(registrationId, { rejected_reason: reason });
@@ -878,40 +877,27 @@ const TournamentDetail = () => {
 
             {/* Danh sách sân đã đặt - CHỈ HIỂN THỊ CHO ORGANIZER/ADMIN */}
             {canManage && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span>Sân thi đấu đã đặt</span>
-                    {bookingsLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              <Card className="border-none shadow-none bg-transparent">
+                <CardHeader className="px-0">
+                  <CardTitle className="flex items-center justify-between text-xl font-bold text-slate-800">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1 h-6 bg-emerald-500 rounded-full" />
+                      <span>Sân thi đấu đã đặt</span>
+                    </div>
+                    {bookingsLoading && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                
+                <CardContent className="px-0">
                   {bookingsError ? (
-                    <Card className="border-red-200 bg-red-50">
-                      <CardContent className="pt-5">
-                        <div className="flex items-start gap-3">
-                          <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
-                          <div>
-                            <p className="font-medium text-red-800">Lỗi tải danh sách sân</p>
-                            <p className="text-sm text-red-700 mt-1">{bookingsError}</p>
-                            <Button size="sm" variant="outline" onClick={loadFieldBookings} className="mt-2">
-                              Thử lại
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <div className="p-4 bg-red-50 text-red-700 rounded-lg border border-red-100 flex items-center justify-between">
+                      <span className="text-sm">{bookingsError}</span>
+                      <Button size="sm" variant="ghost" onClick={loadFieldBookings}>Thử lại</Button>
+                    </div>
                   ) : fieldBookings.length === 0 ? (
-                    <Card className="border-yellow-200 bg-yellow-50">
-                      <CardContent className="pt-5">
-                        <div className="flex items-start gap-3">
-                          <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
-                          <p className="text-sm text-yellow-800">
-                            Chưa có sân nào được đặt cho giải đấu này.
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-500 text-sm">
+                      Chưa có sân nào được đặt cho giải đấu này.
+                    </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                       {fieldBookings.map((booking) => {
@@ -919,164 +905,82 @@ const TournamentDetail = () => {
                         const fieldType = booking.field?.field_type || '5v5';
 
                         return (
-                          <Card
-                            key={booking.id}
-                            className="relative overflow-hidden border-2 border-green-200 hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
-                          >
-                            {/* Gradient background giống sân cỏ */}
-                            <div className="absolute inset-0 bg-gradient-to-br from-green-50 via-green-100 to-emerald-100 opacity-60" />
-
-                            {/* Pattern sọc ngang như sân cỏ thật */}
-                            <div className="absolute inset-0 opacity-10">
-                              <div className="h-full w-full bg-[repeating-linear-gradient(0deg,transparent,transparent_10px,rgba(34,197,94,0.3)_10px,rgba(34,197,94,0.3)_20px)]" />
-                            </div>
-
-                            {/* Status badge */}
-                            <div className="absolute top-2 right-2 z-10">
-                              {booking.status === 'confirmed' && (
-                                <div className="bg-green-600 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow-md">
-                                  <CheckCircle className="w-3 h-3" />
-                                  Đã xác nhận
+                          <Card key={booking.id} className="relative overflow-hidden border border-slate-200 shadow-sm rounded-2xl bg-white hover:shadow-md transition-shadow">
+                            {/* Accent bar */}
+                            <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500" />
+                            
+                            <CardContent className="p-5">
+                              {/* Header Section */}
+                              <div className="flex justify-between items-start mb-4">
+                                <div className="space-y-1">
+                                  <Badge variant="secondary" className="bg-emerald-50 text-emerald-600 border-none text-[10px] font-bold px-2 py-0">
+                                    {fieldType.toUpperCase()}
+                                  </Badge>
+                                  <h4 className="font-bold text-lg text-slate-800">{booking.field?.name || 'Sân'}</h4>
                                 </div>
-                              )}
-                              {booking.status === 'pending' && (
-                                <div className="bg-yellow-500 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow-md">
-                                  <Clock className="w-3 h-3" />
-                                  Chờ xác nhận
-                                </div>
-                              )}
-                              {booking.status === 'completed' && (
-                                <div className="bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow-md">
-                                  <CheckCircle className="w-3 h-3" />
-                                  Hoàn thành
-                                </div>
-                              )}
-                              {booking.status === 'cancelled' && (
-                                <div className="bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow-md">
-                                  <AlertCircle className="w-3 h-3" />
-                                  Đã hủy
-                                </div>
-                              )}
-                            </div>
-
-                            <CardContent className="pt-4 space-y-4 relative z-10">
-                              {/* Icon sân bóng */}
-                              <div className="flex justify-center mb-2">
-                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg border-2 border-white">
-                                  <svg
-                                    className="w-7 h-7 text-white"
-                                    fill="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
-                                    <path d="M12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z" />
-                                    <circle cx="12" cy="12" r="2" />
-                                  </svg>
+                                <div className="bg-blue-50 text-blue-500 p-1.5 rounded-full border border-blue-100">
+                                  <CheckCircle className="w-4 h-4" />
                                 </div>
                               </div>
 
-                              {/* Tên sân và loại sân */}
-                              <div className="text-center">
-                                <h4 className="font-bold text-lg text-green-900 truncate">
-                                  {booking.field?.name || 'Sân'}
-                                </h4>
-                                <div className="flex items-center justify-center gap-2 mt-1">
-                                  <span className="inline-flex items-center bg-green-600 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-sm">
-                                    ⚽ {fieldType.toUpperCase()}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Thông tin chi tiết */}
-                              <div className="space-y-2 bg-white/80 backdrop-blur-sm rounded-lg p-3 shadow-sm border border-green-100">
-                                {booking.field?.field_cluster && (
-                                  <div className="flex items-center gap-2 text-xs text-gray-700">
-                                    <MapPin className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                                    <span className="font-medium truncate">{booking.field.field_cluster.name}</span>
+                              {/* Booking Details */}
+                              <div className="space-y-3 mb-5">
+                                <div className="flex items-center gap-3 text-slate-500">
+                                  <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center border border-slate-100">
+                                    <MapPin className="w-4 h-4" />
                                   </div>
-                                )}
-
-                                <div className="flex items-center gap-2 text-xs text-gray-700">
-                                  <Calendar className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                                  <span className="font-medium">{formatDate(bookingDate)}</span>
+                                  <span className="text-sm font-medium">{booking.field?.field_cluster?.name || 'Cụm sân'}</span>
                                 </div>
 
-                                <div className="flex items-center gap-2 text-xs text-gray-700">
-                                  <Clock className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                                  <span className="font-semibold text-green-700">
+                                <div className="flex items-center gap-3 text-slate-500">
+                                  <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center border border-slate-100">
+                                    <Calendar className="w-4 h-4" />
+                                  </div>
+                                  <span className="text-sm font-medium">{formatDate(bookingDate)}</span>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center border border-slate-100 text-slate-500">
+                                    <Clock className="w-4 h-4" />
+                                  </div>
+                                  <span className="text-sm font-bold text-emerald-500">
                                     {booking.start_time} - {booking.end_time}
                                   </span>
                                 </div>
                               </div>
 
-                              {/* Price */}
-                              {booking.total_price && (
-                                <div className="flex items-center justify-between p-2.5 bg-primary/10 rounded-lg">
-                                  <div className="flex items-center gap-2">
-                                    <DollarSign className="w-3.5 h-3.5 text-primary" />
-                                    <span className="font-medium text-xs">Giá</span>
-                                  </div>
-                                  <span className="font-bold text-primary text-sm">
-                                    {formatCurrency(booking.total_price)}
-                                  </span>
-                                </div>
-                              )}
+                              {/* Pricing Section */}
+                              <div className="pt-4 border-t border-slate-100 flex justify-between items-center mb-4">
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Giá thuê</span>
+                                <span className="text-lg font-bold text-emerald-500">
+                                  {booking.total_price ? formatCurrency(booking.total_price) : '0 ₫'}
+                                </span>
+                              </div>
 
-                              {/* Payment Method */}
-                              {booking.payment_method && (
-                                <div className="space-y-2 pt-2 border-t border-green-200">
-                                  <div className="flex items-center justify-between text-xs">
-                                    <span className="text-gray-600">Thanh toán:</span>
-                                    <Badge variant="outline" className="text-xs font-semibold text-primary">
-                                      {booking.payment_method === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
-                                    </Badge>
-                                  </div>
+                              {/* Payment Section */}
+                              <div className="flex justify-between items-center pt-4 border-t border-slate-100 mb-4 text-xs font-bold">
+                                <span className="text-slate-400 uppercase tracking-wider">Thanh toán</span>
+                                <Badge variant="outline" className="border-slate-200 text-slate-600 rounded-full font-bold px-3 py-0.5">
+                                  {booking.payment_method === 'transfer' ? 'Chuyển khoản' : 'Tiền mặt'}
+                                </Badge>
+                              </div>
 
-                                  {booking.payment_method === 'transfer' && (
-                                    <div className="flex items-center justify-between text-xs">
-                                      <span className="text-gray-600">Trạng thái:</span>
-                                      <Badge
-                                        variant={booking.payment_status === 'paid' ? 'default' : 'secondary'}
-                                        className={`text-xs font-semibold ${booking.payment_status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}
-                                      >
-                                        {booking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ xác nhận'}
-                                      </Badge>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Customer Contact */}
-                              {(booking.customer_name || booking.customer_phone) && (
-                                <div className="space-y-1 text-xs border-t border-green-200 pt-2">
-                                  {booking.customer_name && (
-                                    <p><span className="text-gray-600">Người đặt:</span> <span className="font-medium">{booking.customer_name}</span></p>
-                                  )}
-                                  {booking.customer_phone && (
-                                    <p className="text-gray-700">{booking.customer_phone}</p>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Owner Contact */}
+                              {/* Phone Contact Section */}
                               {booking.field?.field_cluster?.phone && (
-                                <div className="space-y-1 text-xs border-t border-green-200 pt-2">
-                                  <p className="font-semibold text-gray-700">Liên hệ chủ sân:</p>
-                                  <a href={`tel:${booking.field.field_cluster.phone}`} className="text-blue-600 hover:underline">
+                                <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
+                                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Liên hệ chủ sân</span>
+                                  <a 
+                                    href={`tel:${booking.field.field_cluster.phone}`}
+                                    className="text-[13px] font-bold text-blue-600 hover:underline flex items-center gap-1.5"
+                                  >
+                                    <Phone className="w-3 h-3" />
                                     {booking.field.field_cluster.phone}
                                   </a>
                                 </div>
                               )}
-
-                              {/* Note */}
-                              {booking.note && (
-                                <div className="p-2 bg-amber-50 rounded text-xs border border-amber-200">
-                                  <p><span className="font-medium text-amber-900">Ghi chú:</span> <span className="text-amber-800">{booking.note}</span></p>
-                                </div>
-                              )}
                             </CardContent>
                           </Card>
-                        )
+                        );
                       })}
                     </div>
                   )}
