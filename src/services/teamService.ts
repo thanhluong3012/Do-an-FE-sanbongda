@@ -174,4 +174,26 @@ export const teamService = {
       throw error;
     }
   },
+
+  // GET /api/teams/{teamId}/tournaments — giải đấu mà team đã đăng ký
+  getTournaments: async (teamId: number): Promise<any[]> => {
+    try {
+      const response = await api.get(`/teams/${teamId}/tournaments`);
+      return response.data?.data ?? response.data ?? [];
+    } catch (error) {
+      console.error(`Error fetching tournaments for team ${teamId}:`, error);
+      throw error;
+    }
+  },
+
+  // GET /api/teams/{teamId}/upcoming-matches — trận sắp tới của team
+  getUpcomingMatches: async (teamId: number): Promise<any[]> => {
+    try {
+      const response = await api.get(`/teams/${teamId}/upcoming-matches`);
+      return response.data?.data ?? response.data ?? [];
+    } catch (error) {
+      console.error(`Error fetching upcoming matches for team ${teamId}:`, error);
+      throw error;
+    }
+  },
 };

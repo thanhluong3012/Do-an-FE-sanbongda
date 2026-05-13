@@ -32,6 +32,16 @@ export interface Match {
     id: number;
     name: string;
     field_type: string;
+    field_cluster?: {
+      id: number;
+      name: string;
+      address: string;
+      phone?: string;
+      open_time: string;
+      close_time: string;
+      description?: string;
+      image?: string;
+    };
   };
   round?: {
     id: number;
@@ -153,6 +163,28 @@ export const matchService = {
       return response.data.data;
     } catch (error) {
       console.error(`Error assigning team to match ${matchId}:`, error);
+      throw error;
+    }
+  },
+
+  // Đổi sân thi đấu - PATCH /api/tournament-matches/{id}/field
+  updateField: async (matchId: number, fieldId: number): Promise<Match> => {
+    try {
+      const response = await api.patch<ApiResponse<Match>>(`/tournament-matches/${matchId}/field`, { field_id: fieldId });
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error updating match field ${matchId}:`, error);
+      throw error;
+    }
+  },
+
+  // Đổi lịch thi đấu (ngày giờ) - PATCH /api/tournament-matches/{id}/schedule
+  updateSchedule: async (matchId: number, data: { match_date: string; match_time: string }): Promise<Match> => {
+    try {
+      const response = await api.patch<ApiResponse<Match>>(`/tournament-matches/${matchId}/schedule`, data);
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error updating match schedule ${matchId}:`, error);
       throw error;
     }
   },

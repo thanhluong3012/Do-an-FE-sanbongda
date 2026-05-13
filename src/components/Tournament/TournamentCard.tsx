@@ -13,9 +13,10 @@ interface TournamentCardProps {
   onDelete?: (id: number) => void;
   onEdit?: (tournament: Tournament) => void;
   showActions?: boolean;
+  isManager?: boolean;
 }
 
-export const TournamentCard = ({ tournament, onDelete, onEdit, showActions = false }: TournamentCardProps) => {
+export const TournamentCard = ({ tournament, onDelete, onEdit, showActions = false, isManager = false }: TournamentCardProps) => {
   const formatDate = (dateString: string) => {
     try {
       return format(new Date(dateString), 'dd/MM/yyyy', { locale: vi });
@@ -28,7 +29,7 @@ export const TournamentCard = ({ tournament, onDelete, onEdit, showActions = fal
     const registered = tournament.registered_teams_count || 0;
     const max = tournament.max_teams;
     const percentage = (registered / max) * 100;
-    
+
     return { registered, max, percentage };
   };
 
@@ -42,6 +43,20 @@ export const TournamentCard = ({ tournament, onDelete, onEdit, showActions = fal
           <div className="flex flex-wrap gap-2 justify-end">
             <TournamentStatusBadge status={tournament.status} />
             <TournamentFormatBadge format={tournament.format} />
+            {/* Badge phân loại tham gia */}
+            {tournament.participation_type && (
+              <Badge variant="outline" className={
+                tournament.participation_type === 'organizer'
+                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                  : tournament.participation_type === 'participant'
+                    ? 'bg-green-50 text-green-700 border-green-200'
+                    : 'bg-purple-50 text-purple-700 border-purple-200'
+              }>
+                {tournament.participation_type === 'organizer' && '🎯 Tổ chức'}
+                {tournament.participation_type === 'participant' && '⚽ Tham gia'}
+                {tournament.participation_type === 'both' && '👑 Tổ chức & Tham gia'}
+              </Badge>
+            )}
           </div>
         </div>
         <CardTitle className="text-xl line-clamp-2">{tournament.name}</CardTitle>
@@ -92,19 +107,19 @@ export const TournamentCard = ({ tournament, onDelete, onEdit, showActions = fal
         </div>
 
         {tournament.registration_start && tournament.registration_end && (
-          <div className="text-xs text-muted-foreground bg-secondary/50 p-2 rounded">
+          <div className="text-xs text-green-500 text-muted-foreground bg-white p-2 rounded">
             Đăng ký: {formatDate(tournament.registration_start)} - {formatDate(tournament.registration_end)}
           </div>
         )}
       </CardContent>
       <CardFooter className="flex gap-2">
-        <Button variant="outline" className="flex-1" asChild>
+        <Button className="flex-1" asChild>
           <Link to={`/tournament/${tournament.id}`}>
             <Eye className="w-4 h-4 mr-2" />
             Xem chi tiết
           </Link>
         </Button>
-        {showActions && (
+        {showActions && isManager && (
           <>
             {onEdit && (
               <Button

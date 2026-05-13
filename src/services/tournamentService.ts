@@ -57,6 +57,9 @@ export interface Tournament {
   field_cluster_id: number;
   organizer_id?: number;
   
+  // Participation type (for my_tournaments query)
+  participation_type?: 'organizer' | 'participant' | 'both'; // Loại tham gia: tổ chức, tham gia, hoặc cả hai
+  
   // Payment fields
   payment_method?: 'cash' | 'transfer';
   payment_status?: 'pending' | 'paid' | 'rejected' | 'failed';
@@ -192,7 +195,7 @@ export const tournamentService = {
   // Lấy danh sách giải đấu
   getAll: async (params?: TournamentQueryParams): Promise<Tournament[]> => {
     try {
-      const response = await api.get('/public/public/tournaments', { params });
+      const response = await api.get('/public/tournaments', { params });
       // Format 1: Laravel pagination { success: true, data: { data: [...] } }
       if (response.data?.data?.data && Array.isArray(response.data.data.data)) {
         return response.data.data.data;
@@ -357,7 +360,11 @@ export const tournamentService = {
   generateSchedule: async (id: number, params?: { 
     start_date?: string; 
     end_date?: string; 
-    field_ids?: number[] 
+    field_ids?: number[];
+    num_groups?: number;
+    teams_per_group?: number;
+    days_between_rounds?: number;
+    time_slots?: string[];
   }): Promise<{ message: string }> => {
     try {
       const response = await api.post<ApiResponse<{ message: string }>>(
@@ -559,6 +566,81 @@ export const tournamentService = {
       await api.delete(`/tournaments/${id}/delete-rules-file`);
     } catch (error) {
       console.error(`Error deleting rules file for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // ==========================================
+  // GROUP / STANDINGS / MATCHES ENDPOINTS
+  // ==========================================
+
+  // GET /api/tournaments/{id}/groups — groups with standings, teams, matches
+  // Response: { success, data: { tournament_id, groups: [...], total_groups } }
+  getGroups: async (id: number): Promise<any[]> => {
+    try {
+      const response = await api.get(`/tournaments/${id}/groups`);
+      // Unwrap nested: data.data.groups
+      if (Array.isArray(response.data?.data?.groups)) return response.data.data.groups;
+      if (Array.isArray(response.data?.data)) return response.data.data;
+      return [];
+    } catch (error) {
+      console.error(`Error fetching groups for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // GET /api/tournaments/{id}/standings — all group standings
+  // Response: { success, data: { tournament_id, format, groups: [{ group_id, group_name, standings }] } }
+  getStandings: async (id: number): Promise<any[]> => {
+    try {
+      const response = await api.get(`/tournaments/${id}/standings`);
+      if (Array.isArray(response.data?.data?.groups)) return response.data.data.groups;
+      if (Array.isArray(response.data?.data)) return response.data.data;
+      return [];
+    } catch (error) {
+      console.error(`Error fetching standings for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // GET /api/tournaments/{id}/matches — all matches grouped by round
+  // Response: { success, data: { tournament_id, total_matches, rounds: [{ round_id, round_name, round_type, matches }] } }
+  getMatches: async (id: number): Promise<any[]> => {
+    try {
+      const response = await api.get(`/tournaments/${id}/matches`);
+      if (Array.isArray(response.data?.data?.rounds)) return response.data.data.rounds;
+      if (Array.isArray(response.data?.data)) return response.data.data;
+      return [];
+    } catch (error) {
+      console.error(`Error fetching matches for tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // GET /api/tournaments/{id}/teams/{teamId}/matches — matches for a team in a tournament
+  getTeamMatches: async (tournamentId: number, teamId: number): Promise<any[]> => {
+    try {
+      const response = await api.get(`/tournaments/${tournamentId}/teams/${teamId}/matches`);
+      return response.data?.data ?? response.data ?? [];
+    } catch (error) {
+      console.error(`Error fetching team matches for tournament ${tournamentId} team ${teamId}:`, error);
+      throw error;
+    }
+  },
+
+  // PUT /api/tournament-matches/{id}/result — update match result
+  updateMatchResult: async (matchId: number, data: {
+    home_score: number;
+    away_score: number;
+    home_penalty_score?: number;
+    away_penalty_score?: number;
+    status?: string;
+  }): Promise<any> => {
+    try {
+      const response = await api.put(`/tournament-matches/${matchId}/result`, data);
+      return response.data?.data ?? response.data;
+    } catch (error) {
+      console.error(`Error updating match result for match ${matchId}:`, error);
       throw error;
     }
   },

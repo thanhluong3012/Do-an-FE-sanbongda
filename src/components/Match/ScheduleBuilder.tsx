@@ -21,6 +21,7 @@ import { vi } from 'date-fns/locale';
 import { Match } from '@/services/matchService';
 import { TournamentRegistration } from '@/services/registrationService';
 import { BracketSkeleton } from './BracketSkeleton';
+import { TournamentBracketView } from '@/components/Tournament/TournamentBracketView';
 
 interface TeamInfo {
   id: number;
@@ -41,6 +42,7 @@ interface ScheduleBuilderProps {
   onUnpublishSchedule: () => Promise<void>;
   onAssignTeam: (matchId: number, data: { home_team_id?: number; away_team_id?: number }) => Promise<void>;
   onUpdateMatch: (matchId: number, data: { match_date?: string; match_time?: string; field_id?: number }) => Promise<void>;
+  onScoreUpdated?: () => void;
   isGenerating: boolean;
   isDeleting: boolean;
   isPublishing: boolean;
@@ -61,6 +63,7 @@ export const ScheduleBuilder = ({
   onUnpublishSchedule,
   onAssignTeam,
   onUpdateMatch,
+  onScoreUpdated,
   isGenerating,
   isDeleting,
   isPublishing,
@@ -73,40 +76,20 @@ export const ScheduleBuilder = ({
   const [dropTarget, setDropTarget] = useState<string | null>(null); // format: "matchId-position"
 
   // Ưu tiên dùng teams từ bracket API, fallback sang registrations
-  const approvedTeams = teams.length > 0 
-    ? teams 
+  const approvedTeams = teams.length > 0
+    ? teams
     : registrations.filter((r) => r.status === 'approved').map(r => ({
-        id: r.team_id,
-        name: r.team?.name || 'Team',
-        logo: r.team?.logo,
-      }));
+      id: r.team_id,
+      name: r.team?.name || 'Team',
+      logo: r.team?.logo,
+    }));
 
-  const handleDragStart = (e: React.DragEvent, teamId: number) => {
-    console.log('🎯 Drag started:', teamId);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', teamId.toString());
-    setDraggedTeam(teamId);
-    // Add dragging effect
-    if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = '0.5';
-    }
-  };
 
-  const handleDragEnd = (e: React.DragEvent) => {
-    console.log('✅ Drag ended');
-    e.dataTransfer.clearData();
-    setDraggedTeam(null);
-    setDropTarget(null);
-    // Reset opacity
-    if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = '1';
-    }
-  };
 
   const handleDrop = async (e: React.DragEvent, matchId: number, position: 'home' | 'away') => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!draggedTeam) {
       console.warn('⚠️ No dragged team');
       return;
@@ -127,34 +110,21 @@ export const ScheduleBuilder = ({
     }
 
     const data = position === 'home' ? { home_team_id: draggedTeam } : { away_team_id: draggedTeam };
-    
+
     try {
       await onAssignTeam(matchId, data);
       console.log('✅ Team assigned successfully');
     } catch (error) {
       console.error('❌ Failed to assign team:', error);
     }
-    
+
     setDraggedTeam(null);
     setDropTarget(null);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
-  };
 
-  const handleDragEnter = (e: React.DragEvent, matchId: number, position: 'home' | 'away') => {
-    e.preventDefault();
-    console.log(`🎯 Drag enter: match ${matchId}, position ${position}`);
-    setDropTarget(`${matchId}-${position}`);
-  };
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDropTarget(null);
-  };
+
 
   const formatMatchTime = (match: Match) => {
     if (!match.match_date || !match.match_time) {
@@ -170,14 +140,14 @@ export const ScheduleBuilder = ({
         // If match_date is already 'YYYY-MM-DD'
         dateOnly = match.match_date;
       }
-      
+
       // Extract time part (HH:MM or HH:MM:SS)
       const timeOnly = match.match_time.substring(0, 5); // Get HH:MM only
-      
+
       // Combine and parse
       const dateTimeString = `${dateOnly}T${timeOnly}`;
       const date = new Date(dateTimeString);
-      
+
       return formatDate(date, 'dd/MM/yyyy • HH:mm', { locale: vi });
     } catch (error) {
       console.error('Error formatting match time:', error, match);
@@ -188,194 +158,28 @@ export const ScheduleBuilder = ({
   // Group matches by round or group
   const groupedMatches = () => {
     const groups: Record<string, Match[]> = {};
-    
+
     matches.forEach((match) => {
       let key = 'Tất cả các trận';
-      
+
       if (match.round?.name) {
         key = match.round.name;
       } else if (match.group?.name) {
         key = match.group.name;
       }
-      
+
       if (!groups[key]) {
         groups[key] = [];
       }
       groups[key].push(match);
     });
-    
+
     return groups;
   };
 
-  const matchGroups = groupedMatches();
 
-  // Render a single match card
-  const renderMatchCard = (match: Match) => (
-    <Card key={match.id} className="border-2 hover:shadow-md transition-shadow">
-      <CardContent className="pt-5">
-        <div className="grid grid-cols-3 gap-3 items-center">
-          {/* Home Team - Droppable */}
-          <div
-            onDragOver={handleDragOver}
-            onDragEnter={(e) => handleDragEnter(e, match.id, 'home')}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, match.id, 'home')}
-            className={`p-3 rounded-lg border-2 transition-all min-h-[80px] flex items-center justify-center ${
-              dropTarget === `${match.id}-home`
-                ? 'border-primary bg-primary/20 scale-105 ring-2 ring-primary ring-offset-2'
-                : !match.home_team
-                ? 'border-dashed bg-muted/50 border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/5'
-                : 'border-transparent bg-card shadow-sm'
-            }`}
-          >
-            {match.home_team ? (
-              <div className="flex flex-col items-center gap-2 text-center w-full pointer-events-none">
-                {match.home_team.logo ? (
-                  <img
-                    src={match.home_team.logo}
-                    alt={match.home_team.name}
-                    className="w-10 h-10 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                    <Users className="w-5 h-5 text-blue-600" />
-                  </div>
-                )}
-                <p className="font-semibold text-sm truncate w-full px-1">{match.home_team.name}</p>
-                {match.home_score !== undefined && (
-                  <span className="text-xl font-bold">{match.home_score}</span>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-2 pointer-events-none">
-                <p className="text-xs text-muted-foreground">Đội A</p>
-              </div>
-            )}
-          </div>
 
-          {/* VS */}
-          <div className="text-center">
-            <Badge variant="outline" className="text-xs font-bold">VS</Badge>
-          </div>
 
-          {/* Away Team - Droppable */}
-          <div
-            onDragOver={handleDragOver}
-            onDragEnter={(e) => handleDragEnter(e, match.id, 'away')}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, match.id, 'away')}
-            className={`p-3 rounded-lg border-2 transition-all min-h-[80px] flex items-center justify-center ${
-              dropTarget === `${match.id}-away`
-                ? 'border-primary bg-primary/20 scale-105 ring-2 ring-primary ring-offset-2'
-                : !match.away_team
-                ? 'border-dashed bg-muted/50 border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/5'
-                : 'border-transparent bg-card shadow-sm'
-            }`}
-          >
-            {match.away_team ? (
-              <div className="flex flex-col items-center gap-2 text-center w-full pointer-events-none">
-                {match.away_team.logo ? (
-                  <img
-                    src={match.away_team.logo}
-                    alt={match.away_team.name}
-                    className="w-10 h-10 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                    <Users className="w-5 h-5 text-red-600" />
-                  </div>
-                )}
-                <p className="font-semibold text-sm truncate w-full px-1">{match.away_team.name}</p>
-                {match.away_score !== undefined && (
-                  <span className="text-xl font-bold">{match.away_score}</span>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-2 pointer-events-none">
-                <p className="text-xs text-muted-foreground">Đội B</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Match Info */}
-        <div className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-          <Calendar className="w-3 h-3" />
-          {editingMatch === match.id ? (
-            <div className="flex items-center gap-2">
-              <Input
-                type="datetime-local"
-                value={editTime}
-                onChange={(e) => setEditTime(e.target.value)}
-                className="h-7 text-xs"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleSaveTime(match.id)}
-                className="h-7 px-2 text-xs"
-              >
-                Lưu
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setEditingMatch(null);
-                  setEditTime('');
-                }}
-                className="h-7 px-2 text-xs"
-              >
-                Hủy
-              </Button>
-            </div>
-          ) : (
-            <button
-              onClick={() => handleEditTime(match)}
-              className="hover:text-foreground transition-colors"
-            >
-              {formatMatchTime(match)}
-            </button>
-          )}
-        </div>
-        {match.field && (
-          <div className="mt-1 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <MapPin className="w-3 h-3" />
-            <span>{match.field.name}</span>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-
-  const handleEditTime = (match: Match) => {
-    setEditingMatch(match.id);
-    if (match.match_date && match.match_time) {
-      // Extract date part only
-      let dateOnly: string;
-      if (match.match_date.includes('T')) {
-        dateOnly = match.match_date.split('T')[0];
-      } else {
-        dateOnly = match.match_date;
-      }
-      
-      // Extract time part (HH:MM)
-      const timeOnly = match.match_time.substring(0, 5);
-      
-      // Combine for datetime-local input format
-      setEditTime(`${dateOnly}T${timeOnly}`);
-    }
-  };
-
-  const handleSaveTime = async (matchId: number) => {
-    if (editTime) {
-      // Split datetime-local format back to date and time
-      const [match_date, match_time] = editTime.split('T');
-      await onUpdateMatch(matchId, { match_date, match_time });
-      setEditingMatch(null);
-      setEditTime('');
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -514,98 +318,337 @@ export const ScheduleBuilder = ({
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Danh sách đội - Draggable */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              Danh sách đội
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {approvedTeams.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                Chưa có đội nào được duyệt
-              </p>
-            ) : (
-              approvedTeams.map((team) => (
-                <div
-                  key={team.id}
-                  draggable={true}
-                  onDragStart={(e) => handleDragStart(e, team.id)}
-                  onDragEnd={handleDragEnd}
-                  className={`flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent cursor-move transition-colors select-none ${
-                    draggedTeam === team.id ? 'opacity-50 scale-95' : ''
-                  }`}
-                  style={{ cursor: 'grab', userSelect: 'none' }}
-                  onMouseDown={(e) => { e.currentTarget.style.cursor = 'grabbing'; }}
-                  onMouseUp={(e) => { e.currentTarget.style.cursor = 'grab'; }}
-                >
-                  {team.logo ? (
-                    <img
-                      src={team.logo}
-                      alt={team.name}
-                      className="w-8 h-8 rounded-full object-cover pointer-events-none"
-                      draggable={false}
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center pointer-events-none">
-                      <Users className="w-4 h-4 text-primary" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{team.name}</p>
+      {/* Empty State - Hiển thị khi chưa có lịch */}
+      {matches.length === 0 && approvedTeams.length >= 2 && (
+        <div className="space-y-6">
+          {/* Thông tin thể thức giải đấu */}
+          <Card className="border-primary/30 bg-gradient-to-r from-primary/5 to-primary/10">
+            <CardContent className="pt-5">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center">
+                    {format === 'round_robin' && <span className="text-2xl">🔄</span>}
+                    {format === 'knockout' && <span className="text-2xl">🏆</span>}
+                    {format === 'group_knockout' && <span className="text-2xl">📊</span>}
                   </div>
-                  <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                  <div>
+                    <h3 className="font-bold text-lg">
+                      {format === 'round_robin' && 'Vòng tròn (Round Robin)'}
+                      {format === 'knockout' && 'Loại trực tiếp (Knockout)'}
+                      {format === 'group_knockout' && 'Vòng bảng + Loại trực tiếp'}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Thể thức giải đấu của bạn • {approvedTeams.length} đội tham gia
+                    </p>
+                  </div>
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+                <Badge variant="default" className="bg-primary text-lg px-4 py-1.5">
+                  {format === 'round_robin' && '🔄 Vòng tròn'}
+                  {format === 'knockout' && '🏆 Knockout'}
+                  {format === 'group_knockout' && '📊 Bảng + KO'}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* Lịch thi đấu - Droppable */}
-        <div className="lg:col-span-3 space-y-4">
+          {/* Danh sách đội tham gia */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                Lịch thi đấu ({matches.length} trận)
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                Danh sách đội tham gia ({approvedTeams.length} đội)
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {matches.length === 0 ? (
-                <BracketSkeleton 
-                  format={format}
-                  teamCount={approvedTeams.length}
-                  maxTeams={maxTeams}
-                />
-              ) : (
-                <div className="space-y-6">
-                  {Object.entries(matchGroups).map(([groupName, groupMatches]) => (
-                    <div key={groupName} className="space-y-3">
-                      {/* Group/Round Header */}
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="font-semibold">
-                          {groupName}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {groupMatches.length} trận
-                        </span>
-                      </div>
-                      
-                      {/* Matches Grid */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {groupMatches.map((match) => renderMatchCard(match))}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="text-left p-3 font-semibold">STT</th>
+                      <th className="text-left p-3 font-semibold">Tên đội</th>
+                      <th className="text-center p-3 font-semibold">Logo</th>
+                      <th className="text-center p-3 font-semibold">Trạng thái</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {approvedTeams.map((team, index) => (
+                      <tr key={team.id} className="border-b hover:bg-muted/30 transition-colors">
+                        <td className="p-3 font-medium">{index + 1}</td>
+                        <td className="p-3">
+                          <span className="font-semibold">{team.name}</span>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex justify-center">
+                            {team.logo ? (
+                              <img
+                                src={team.logo}
+                                alt={team.name}
+                                className="w-10 h-10 rounded-full object-cover border-2 border-primary/20"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                <Users className="w-5 h-5 text-primary" />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex justify-center">
+                            <Badge variant="default" className="bg-green-600">
+                              <CheckCircle2 className="w-3 h-3 mr-1" />
+                              Đã duyệt
+                            </Badge>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Hướng dẫn chức năng tự động sinh lịch */}
+          <Card className="border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wand2 className="w-5 h-5 text-primary" />
+                Thể thức thi đấu và cơ chế sinh lịch tự động
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-muted-foreground">
+                Hệ thống sẽ tự động tạo lịch thi đấu theo thể thức <strong className="text-foreground">{
+                  format === 'round_robin' ? 'Vòng tròn' :
+                    format === 'knockout' ? 'Loại trực tiếp' :
+                      'Vòng bảng + Loại trực tiếp'
+                }</strong> với {approvedTeams.length} đội đã được duyệt:
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={`p-4 rounded-lg border-2 transition-all ${format === 'round_robin'
+                  ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/20'
+                  : 'border-border bg-card'
+                  }`}>
+                  <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center mb-2">
+                    <span className="text-xl">🔄</span>
+                  </div>
+                  <h4 className="font-semibold mb-1 flex items-center gap-2">
+                    Vòng tròn (Round Robin)
+                    {format === 'round_robin' && (
+                      <Badge variant="default" className="text-xs">Đang dùng</Badge>
+                    )}
+                  </h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Đấu 1 bảng tính điểm. Mỗi đội đấu với tất cả các đội khác đúng 1 lần.
+                  </p>
+                  <ul className="text-xs text-muted-foreground space-y-1">
+                    <li>• Đội thắng: +3 điểm</li>
+                    <li>• Hòa: +1 điểm mỗi đội</li>
+                    <li>• Đội có điểm cao nhất vô địch</li>
+                  </ul>
+                </div>
+
+                <div className={`p-4 rounded-lg border-2 transition-all ${format === 'knockout'
+                  ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/20'
+                  : 'border-border bg-card'
+                  }`}>
+                  <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center mb-2">
+                    <span className="text-xl">🏆</span>
+                  </div>
+                  <h4 className="font-semibold mb-1 flex items-center gap-2">
+                    Loại trực tiếp (Knockout)
+                    {format === 'knockout' && (
+                      <Badge variant="default" className="text-xs">Đang dùng</Badge>
+                    )}
+                  </h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Chia cặp ngẫu nhiên, thua 1 trận là bị loại. Thắng thì vào vòng sau.
+                  </p>
+                  <ul className="text-xs text-muted-foreground space-y-1">
+                    <li>• Nếu lẻ đội: 1 đội được vào vòng trong (bye)</li>
+                    <li>• Vòng 1/8, 1/4, Bán kết, Chung kết</li>
+                    <li>• Không có bảng xếp hạng</li>
+                  </ul>
+                </div>
+
+                <div className={`p-4 rounded-lg border-2 transition-all ${format === 'group_knockout'
+                  ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/20'
+                  : 'border-border bg-card'
+                  }`}>
+                  <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center mb-2">
+                    <span className="text-xl">📊</span>
+                  </div>
+                  <h4 className="font-semibold mb-1 flex items-center gap-2">
+                    Bảng + Knockout
+                    {format === 'group_knockout' && (
+                      <Badge variant="default" className="text-xs">Đang dùng</Badge>
+                    )}
+                  </h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Chia thành nhiều bảng, đấu vòng tròn trong bảng. Top 2 mỗi bảng vào knockout.
+                  </p>
+                  <ul className="text-xs text-muted-foreground space-y-1">
+                    <li>• Vòng bảng: như Round Robin</li>
+                    <li>• 2 đội đầu mỗi bảng vào knockout</li>
+                    <li>• Knockout: như thể thức loại trực tiếp</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                <h4 className="font-semibold mb-2 flex items-center gap-2">
+                  <span className="text-primary">✨</span>
+                  Tính năng thông minh khi sinh lịch:
+                </h4>
+                <ul className="space-y-1.5 text-sm text-muted-foreground">
+                  <li className="flex items-start gap-2">
+                    <span className="text-primary mt-0.5">•</span>
+                    Tự động phân bổ trận đấu vào các sân đã đặt (booking)
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-primary mt-0.5">•</span>
+                    Tránh đụng độ thời gian giữa các trận
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-primary mt-0.5">•</span>
+                    Phân bổ đều thời gian nghỉ giữa các trận của mỗi đội
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-primary mt-0.5">•</span>
+                    {format === 'round_robin' && 'Tạo bảng xếp hạng tự động tính điểm theo kết quả'}
+                    {format === 'knockout' && 'Tự động ghép cặp cho vòng sau dựa trên kết quả'}
+                    {format === 'group_knockout' && 'Tạo bảng xếp hạng cho vòng bảng, tự động ghép knockout'}
+                  </li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quy trình tổ chức giải */}
+          <Card className="border-green-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                Quy trình tổ chức giải đấu
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {[
+                  {
+                    step: 1,
+                    title: 'Duyệt đội tham gia',
+                    description: 'Xem và duyệt các đội đăng ký tham gia giải (tab "Danh sách đội đăng ký")',
+                    status: 'completed',
+                    icon: '✅',
+                  },
+                  {
+                    step: 2,
+                    title: 'Sinh lịch thi đấu',
+                    description: 'Nhấn nút "Tự động sinh lịch" - hệ thống sẽ tạo lịch dựa trên thể thức và sân đã đặt',
+                    status: 'current',
+                    icon: '🎯',
+                  },
+                  {
+                    step: 3,
+                    title: 'Kiểm tra và điều chỉnh',
+                    description: 'Xem lại lịch thi đấu, có thể chỉnh sửa thời gian, sân thi đấu nếu cần',
+                    status: 'pending',
+                    icon: '⏳',
+                  },
+                  {
+                    step: 4,
+                    title: 'Công khai lịch đấu',
+                    description: 'Nhấn "Công khai lịch đấu" để các đội và người xem có thể theo dõi',
+                    status: 'pending',
+                    icon: '🌐',
+                  },
+                  {
+                    step: 5,
+                    title: 'Cập nhật kết quả',
+                    description: 'Sau mỗi trận, cập nhật tỷ số để bảng xếp hạng tự động tính',
+                    status: 'pending',
+                    icon: '⚽',
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.step}
+                    className={`flex gap-4 p-4 rounded-lg border-2 transition-all ${item.status === 'completed'
+                      ? 'bg-green-50 border-green-200'
+                      : item.status === 'current'
+                        ? 'bg-primary/5 border-primary shadow-sm'
+                        : 'bg-muted/30 border-muted'
+                      }`}
+                  >
+                    <div className="flex-shrink-0">
+                      <div
+                        className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold ${item.status === 'completed'
+                          ? 'bg-green-600 text-white'
+                          : item.status === 'current'
+                            ? 'bg-primary text-white'
+                            : 'bg-muted text-muted-foreground'
+                          }`}
+                      >
+                        {item.icon}
                       </div>
                     </div>
-                  ))}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-semibold">
+                          Bước {item.step}: {item.title}
+                        </h4>
+                        {item.status === 'completed' && (
+                          <Badge variant="default" className="bg-green-600">Hoàn thành</Badge>
+                        )}
+                        {item.status === 'current' && (
+                          <Badge variant="default">Đang thực hiện</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{item.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 p-4 rounded-lg bg-yellow-50 border border-yellow-200">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
+                  <div className="text-sm">
+                    <p className="font-semibold text-yellow-800 mb-1">Lưu ý quan trọng:</p>
+                    <ul className="space-y-1 text-yellow-700">
+                      <li>• Đảm bảo đã đặt đủ sân cho tất cả các trận đấu</li>
+                      <li>• Kiểm tra kỹ thời gian trước khi công khai lịch</li>
+                      <li>• Sau khi công khai, các đội sẽ nhận thông báo qua email</li>
+                    </ul>
+                  </div>
                 </div>
-              )}
+              </div>
             </CardContent>
           </Card>
         </div>
-      </div>
+      )}
+
+
+      {/* Tournament Bracket View - Hiển thị sau khi sinh lịch thành công */}
+      {matches.length > 0 && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Globe className="w-5 h-5" />
+              Xem lịch thi đấu (Chế độ xem công khai)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TournamentBracketView
+              tournamentId={tournamentId}
+              format={format}
+              canManage={true}
+              onScoreUpdated={onScoreUpdated}
+            />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

@@ -19,7 +19,7 @@ const MatchesSection = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    tournamentService.getAll()
+    tournamentService.getMyTournaments()
       .then((data) => {
         const list = Array.isArray(data) ? data : [];
         const visible = list

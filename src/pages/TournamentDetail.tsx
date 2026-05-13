@@ -7,6 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Tournament, tournamentService, TournamentBracket, FieldBooking } from '@/services/tournamentService';
@@ -25,6 +29,7 @@ import { GroupStandingsTable } from '@/components/Standings/GroupStandingsTable'
 import { ScheduleBuilder } from '@/components/Match/ScheduleBuilder';
 import { PaymentInfoCard } from '@/components/Tournament/PaymentInfoCard';
 import { RulesFileSection } from '@/components/Tournament/RulesFileSection';
+import { TournamentBracketView } from '@/components/Tournament/TournamentBracketView';
 import {
   Trophy, MapPin, Users, Calendar, ArrowLeft, CheckCircle,
   Loader2, User, Megaphone, AlertCircle, ClipboardList,
@@ -94,7 +99,7 @@ const TournamentDetail = () => {
     const tournamentId = parseInt(id || '0');
     if (message.relatedIds?.tournamentId === tournamentId) {
       console.log('🔔 [Tournament Detail] Payment status updated from another tab');
-      
+
       if (message.type === 'payment_confirmed') {
         toast({
           title: '✅ Thanh toán đã được xác nhận',
@@ -128,6 +133,11 @@ const TournamentDetail = () => {
   const [isDeletingSchedule, setIsDeletingSchedule] = useState(false);
   const [isPublishingSchedule, setIsPublishingSchedule] = useState(false);
   const [isUnpublishingSchedule, setIsUnpublishingSchedule] = useState(false);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [scheduleNumGroups, setScheduleNumGroups] = useState<number>(2);
+  const [scheduleTeamsPerGroup, setScheduleTeamsPerGroup] = useState<number>(4);
+  const [scheduleDaysBetweenRounds, setScheduleDaysBetweenRounds] = useState<number>(3);
+  const [scheduleAutoSelectFields, setScheduleAutoSelectFields] = useState<boolean>(true);
 
   // Standings — derived from bracket data (groups[].standings[])
   // Không cần gọi API riêng, lấy trực tiếp từ bracket
@@ -147,7 +157,7 @@ const TournamentDetail = () => {
   const allMatches = useMemo(() => {
     if (!bracket) return [];
     const matches = [];
-    
+
     // Round robin hoặc group knockout: lấy từ groups
     if (bracket.groups && bracket.groups.length > 0) {
       for (const group of bracket.groups) {
@@ -156,7 +166,7 @@ const TournamentDetail = () => {
         }
       }
     }
-    
+
     // Knockout: lấy từ rounds
     if (bracket.rounds && bracket.rounds.length > 0) {
       for (const round of bracket.rounds) {
@@ -165,9 +175,31 @@ const TournamentDetail = () => {
         }
       }
     }
-    
+
     return matches;
   }, [bracket]);
+
+  const approvedTeamsForSchedule = useMemo(() => {
+    const fromBracketTeams = bracket?.teams?.length ?? 0;
+    if (fromBracketTeams > 0) return fromBracketTeams;
+
+    const fromTournamentTeams = tournament?.teams?.length ?? 0;
+    if (fromTournamentTeams > 0) return fromTournamentTeams;
+
+    const fromTournamentRegistrations = (tournament?.registrations ?? []).filter(
+      (r: any) => (r.registration_status || r.status) === 'approved'
+    ).length;
+    if (fromTournamentRegistrations > 0) return fromTournamentRegistrations;
+
+    const fromRegistrations = registrations.filter(
+      (r: any) => (r.registration_status || r.status) === 'approved'
+    ).length;
+    if (fromRegistrations > 0) return fromRegistrations;
+
+    return tournament?.approved_teams_count ?? 0;
+  }, [bracket?.teams, tournament?.teams, tournament?.registrations, tournament?.approved_teams_count, registrations]);
+
+  const scheduleBaseTeamCount = Math.max(2, approvedTeamsForSchedule);
 
   // Standings: extract từ bracket groups
   const standings: GroupStanding[] = useMemo(() => {
@@ -212,8 +244,8 @@ const TournamentDetail = () => {
       // standings lấy từ bracket, không cần gọi API riêng
       // Field bookings chỉ load cho organizer/admin - sẽ được gọi sau khi có tournament data
     }
-  // Re-fetch khi user thay đổi để cập nhật quyền và danh sách đăng ký
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Re-fetch khi user thay đổi để cập nhật quyền và danh sách đăng ký
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournamentId, user?.id]);
 
   // Load bracket khi đã có tournament data để biết user có phải organizer không
@@ -221,7 +253,7 @@ const TournamentDetail = () => {
     if (tournament) {
       loadBracket();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournament?.id, user?.id]);
 
   // Load field bookings khi đã có tournament data và user là organizer/admin
@@ -233,7 +265,7 @@ const TournamentDetail = () => {
         loadFieldBookings();
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournament?.id, user?.id]);
 
   // Auto-refresh tournament khi user quay lại trang (sau khi owner xác nhận thanh toán)
@@ -249,7 +281,7 @@ const TournamentDetail = () => {
 
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournamentId, tournament?.payment_status, tournament?.payment_method]);
 
   // ---- loaders ----
@@ -272,7 +304,7 @@ const TournamentDetail = () => {
   const loadRegistrations = async () => {
     // Chỉ gọi khi có token (API cần auth)
     if (!sessionStorage.getItem('access_token')) return;
-    
+
     setRegLoading(true);
     setRegError(null);
     try {
@@ -299,7 +331,7 @@ const TournamentDetail = () => {
       const isOrganizer = user && tournament?.organizer_id && String(user.id) === String(tournament.organizer_id);
       const isAdminUser = user && user.role_id === 1; // role_id 1 = admin
       const canManageTournament = !!(isOrganizer || isAdminUser);
-      
+
       const data = await tournamentService.getBracket(tournamentId, canManageTournament);
       setBracket(data);
     } catch (err: any) {
@@ -329,7 +361,7 @@ const TournamentDetail = () => {
   const loadFieldBookings = async () => {
     // Chỉ load nếu user đã đăng nhập
     if (!user) return;
-    
+
     setBookingsLoading(true);
     setBookingsError(null);
     try {
@@ -413,15 +445,65 @@ const TournamentDetail = () => {
   };
 
   // ---- Schedule handlers ----
+  const clampScheduleValue = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+  const handleNumGroupsChange = (rawValue: string) => {
+    const parsed = Number.parseInt(rawValue, 10);
+    const nextNumGroups = clampScheduleValue(Number.isNaN(parsed) ? 2 : parsed, 2, 8);
+    setScheduleNumGroups(nextNumGroups);
+
+    if (tournament?.format === 'group_knockout') {
+      const nextTeamsPerGroup = clampScheduleValue(Math.ceil(scheduleBaseTeamCount / nextNumGroups), 2, 16);
+      setScheduleTeamsPerGroup(nextTeamsPerGroup);
+    }
+  };
+
+  const handleTeamsPerGroupChange = (rawValue: string) => {
+    const parsed = Number.parseInt(rawValue, 10);
+    const nextTeamsPerGroup = clampScheduleValue(Number.isNaN(parsed) ? 4 : parsed, 2, 16);
+    setScheduleTeamsPerGroup(nextTeamsPerGroup);
+
+    if (tournament?.format === 'group_knockout') {
+      const nextNumGroups = clampScheduleValue(Math.ceil(scheduleBaseTeamCount / nextTeamsPerGroup), 2, 8);
+      setScheduleNumGroups(nextNumGroups);
+    }
+  };
+
+  const handleOpenScheduleDialog = async () => {
+    if (tournament?.format === 'group_knockout') {
+      const normalizedGroups = clampScheduleValue(scheduleNumGroups, 2, 8);
+      setScheduleNumGroups(normalizedGroups);
+      setScheduleTeamsPerGroup(
+        clampScheduleValue(Math.ceil(scheduleBaseTeamCount / normalizedGroups), 2, 16)
+      );
+    }
+    setScheduleDialogOpen(true);
+  };
+
   const handleGenerateSchedule = async () => {
     if (!tournament) return;
     setIsGeneratingSchedule(true);
     try {
-      await tournamentService.generateSchedule(tournamentId, {
+      const params: Record<string, any> = {
         start_date: tournament.start_date,
         end_date: tournament.end_date,
-      });
+        days_between_rounds: scheduleDaysBetweenRounds,
+      };
+
+      // Chỉ truyền field_ids khi tắt auto-select (hiện tại chưa có UI chọn sân thủ công)
+      // Khi bật auto-select, backend tự lấy từ bookings
+      if (!scheduleAutoSelectFields) {
+        // TODO: Thêm UI chọn sân thủ công sau
+        // params.field_ids = selectedFieldIds;
+      }
+
+      if (tournament.format === 'group_knockout') {
+        params.num_groups = scheduleNumGroups;
+        params.teams_per_group = scheduleTeamsPerGroup;
+      }
+      await tournamentService.generateSchedule(tournamentId, params);
       toast({ title: 'Thành công', description: 'Đã tự động sinh lịch thi đấu!' });
+      setScheduleDialogOpen(false);
       await loadBracket();
       await loadTournament();
       await loadFieldBookings(); // ← Reload sân đã book
@@ -516,9 +598,9 @@ const TournamentDetail = () => {
 
   if (tournamentError || !tournament) {
     // Check if tournament was deleted (404 or "No query results" error)
-    const isDeleted = tournamentError?.includes('No query results') || 
-                     tournamentError?.includes('not found') ||
-                     tournamentError?.includes('404');
+    const isDeleted = tournamentError?.includes('No query results') ||
+      tournamentError?.includes('not found') ||
+      tournamentError?.includes('404');
 
     return (
       <div className="min-h-screen bg-background">
@@ -534,7 +616,7 @@ const TournamentDetail = () => {
                 {isDeleted ? 'Giải đấu không tồn tại' : 'Không thể tải giải đấu'}
               </p>
               <p className="text-muted-foreground">
-                {isDeleted 
+                {isDeleted
                   ? 'Giải đấu này đã bị xóa hoặc không còn tồn tại. Có thể do thanh toán bị từ chối hoặc giải đấu đã bị hủy.'
                   : (tournamentError || 'Không tìm thấy giải đấu này.')
                 }
@@ -580,7 +662,7 @@ const TournamentDetail = () => {
   const canManage = isOrganizer || isAdmin();
 
   // Lấy danh sách đội từ nhiều nguồn (ưu tiên bracket > tournament > registrations)
-  const tournamentTeams = bracket?.teams || tournament.teams || 
+  const tournamentTeams = bracket?.teams || tournament.teams ||
     (tournament.registrations || [])
       .filter((r: any) => (r.registration_status || r.status) === 'approved')
       .map((r: any) => ({
@@ -588,6 +670,8 @@ const TournamentDetail = () => {
         name: r.team?.name || 'Team',
         logo: r.team?.logo,
       }));
+
+  console.log('tournamentTeams', tournamentTeams);
 
   return (
     <div className="min-h-screen bg-background">
@@ -613,27 +697,32 @@ const TournamentDetail = () => {
                 </div>
               </div>
             </div>
+            {
+              canManage ? <div className="flex flex-wrap gap-2  text-md text-white bg-green-600 p-3 rounded-xl">
+                Ban tổ chức giải  : <span className=" uppercase  font-semibold">{tournament.organizer?.name || 'N/A'}</span>
+              </div> :
+                <div className="flex flex-wrap gap-2">
+                  {tournament.status === 'open' && !canManage && (
+                    <Button
+                      size="lg"
+                      className={`gap-2 ${isFull ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      onClick={() => !isFull && setIsRegistrationDialogOpen(true)}
+                      disabled={isFull}
+                      variant={isFull ? 'outline' : 'default'}
+                    >
+                      <CheckCircle className="w-5 h-5" />
+                      {isFull ? 'Đã đủ đội' : 'Đăng ký tham gia'}
+                    </Button>
+                  )}
+                  {canPublish && (
+                    <Button size="lg" className="gap-2 bg-green-600 hover:bg-green-700" onClick={handlePublish} disabled={isPublishing}>
+                      {isPublishing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Megaphone className="w-5 h-5" />}
+                      Mở đăng ký
+                    </Button>
+                  )}
+                </div>
+            }
 
-            <div className="flex flex-wrap gap-2">
-              {tournament.status === 'open' && (
-                <Button
-                  size="lg"
-                  className={`gap-2 ${isFull ? 'opacity-60 cursor-not-allowed' : ''}`}
-                  onClick={() => !isFull && setIsRegistrationDialogOpen(true)}
-                  disabled={isFull}
-                  variant={isFull ? 'outline' : 'default'}
-                >
-                  <CheckCircle className="w-5 h-5" />
-                  {isFull ? 'Đã đủ đội' : 'Đăng ký tham gia'}
-                </Button>
-              )}
-              {canPublish && (
-                <Button size="lg" className="gap-2 bg-green-600 hover:bg-green-700" onClick={handlePublish} disabled={isPublishing}>
-                  {isPublishing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Megaphone className="w-5 h-5" />}
-                  Mở đăng ký
-                </Button>
-              )}
-            </div>
           </div>
 
           {/* Info cards */}
@@ -656,7 +745,7 @@ const TournamentDetail = () => {
                   <div>
                     <p className="text-xs text-muted-foreground">Số đội tham gia</p>
                     <p className={`font-semibold ${isFull ? 'text-red-500' : 'text-green-600'}`}>
-                      {approvedCount} / {tournament.max_teams} đội
+                      {tournamentTeams.length} / {tournament.max_teams} đội
                     </p>
                   </div>
                 </div>
@@ -667,7 +756,7 @@ const TournamentDetail = () => {
                 <div className="flex items-center gap-3">
                   <Calendar className="w-5 h-5 text-muted-foreground shrink-0" />
                   <div>
-                    <p className="text-xs text-muted-foreground">Đăng ký</p>
+                    <p className="text-xs text-muted-foreground">Đăng ký từ ngày</p>
                     <p className="font-semibold text-sm">{formatDate(tournament.registration_start)} – {formatDate(tournament.registration_end)}</p>
                   </div>
                 </div>
@@ -690,14 +779,14 @@ const TournamentDetail = () => {
           {isFull && (
             <div className="mt-4 flex items-center gap-2 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm font-medium">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              Giải đấu đã đủ {approvedCount}/{tournament.max_teams} đội. Không thể đăng ký thêm.
+              Giải đấu đã đủ {tournamentTeams.length}/{tournament.max_teams} đội. Không thể đăng ký thêm.
             </div>
           )}
 
           {/* Payment Info Card - hiển thị nếu có payment_method */}
           {tournament.payment_method && canPublish && (
             <div className="mt-4">
-              <PaymentInfoCard 
+              <PaymentInfoCard
                 tournament={tournament}
                 onPublish={handlePublish}
                 isPublishing={isPublishing}
@@ -721,16 +810,16 @@ const TournamentDetail = () => {
             </TabsTrigger>
             <TabsTrigger value="registrations" className="gap-1.5">
               <ClipboardList className="w-4 h-4" />
-              <span className="hidden sm:inline">Đăng ký</span>
+              <span className="hidden sm:inline">Danh sách đội đăng ký</span>
               {registrations.length > 0 && <span className="ml-1 text-xs bg-primary/20 px-1.5 rounded-full">{registrations.length}</span>}
             </TabsTrigger>
             <TabsTrigger value="matches" className="gap-1.5">
               <Swords className="w-4 h-4" />
-              <span className="hidden sm:inline">Lịch đấu</span>
+              <span className="hidden sm:inline">Lịch thi đấu</span>
               {allMatches.length > 0 && <span className="ml-1 text-xs bg-primary/20 px-1.5 rounded-full">{allMatches.length}</span>}
             </TabsTrigger>
             <TabsTrigger value="standings" className="gap-1.5">
-              <BarChart3 className="w-4 h-4" /><span className="hidden sm:inline">Xếp hạng</span>
+              <BarChart3 className="w-4 h-4" /><span className="hidden sm:inline">Bảng xếp hạng</span>
             </TabsTrigger>
           </TabsList>
 
@@ -781,7 +870,7 @@ const TournamentDetail = () => {
             </Card>
 
             {/* Thể lệ giải đấu */}
-            <RulesFileSection 
+            <RulesFileSection
               tournament={tournament}
               canEdit={canManage}
               onUpdate={loadTournament}
@@ -798,238 +887,323 @@ const TournamentDetail = () => {
                 </CardHeader>
                 <CardContent>
                   {bookingsError ? (
-                      <Card className="border-red-200 bg-red-50">
-                        <CardContent className="pt-5">
-                          <div className="flex items-start gap-3">
-                            <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
-                            <div>
-                              <p className="font-medium text-red-800">Lỗi tải danh sách sân</p>
-                              <p className="text-sm text-red-700 mt-1">{bookingsError}</p>
-                              <Button size="sm" variant="outline" onClick={loadFieldBookings} className="mt-2">
-                                Thử lại
-                              </Button>
-                            </div>
+                    <Card className="border-red-200 bg-red-50">
+                      <CardContent className="pt-5">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="font-medium text-red-800">Lỗi tải danh sách sân</p>
+                            <p className="text-sm text-red-700 mt-1">{bookingsError}</p>
+                            <Button size="sm" variant="outline" onClick={loadFieldBookings} className="mt-2">
+                              Thử lại
+                            </Button>
                           </div>
-                        </CardContent>
-                      </Card>
-                    ) : fieldBookings.length === 0 ? (
-                      <Card className="border-yellow-200 bg-yellow-50">
-                        <CardContent className="pt-5">
-                          <div className="flex items-start gap-3">
-                            <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
-                            <p className="text-sm text-yellow-800">
-                              Chưa có sân nào được đặt cho giải đấu này.
-                            </p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-4">
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : fieldBookings.length === 0 ? (
+                    <Card className="border-yellow-200 bg-yellow-50">
+                      <CardContent className="pt-5">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 shrink-0" />
+                          <p className="text-sm text-yellow-800">
+                            Chưa có sân nào được đặt cho giải đấu này.
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                       {fieldBookings.map((booking) => {
                         const bookingDate = booking.day_book || booking.booking_date;
+                        const fieldType = booking.field?.field_type || '5v5';
+
                         return (
-                        <Card key={booking.id} className="border-2 hover:shadow-md transition-shadow">
-                          <CardContent className="pt-4 space-y-4">
-                            {/* Header - Field Info */}
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-start gap-3 flex-1 min-w-0">
-                                <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
-                                  <MapPin className="w-5 h-5 text-green-600" />
+                          <Card key={booking.id} className="border-2 hover:shadow-md transition-shadow">
+                            <CardContent className="pt-4 space-y-4">
+                              {/* Header - Field Info */}
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-start gap-3 flex-1 min-w-0">
+                                  <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
+                                    <MapPin className="w-5 h-5 text-green-600" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="font-semibold truncate">{booking.field?.name || 'Sân'}</h4>
+                                    {booking.field?.field_cluster && (
+                                      <p className="text-xs text-muted-foreground truncate">
+                                        {booking.field.field_cluster.name}
+                                      </p>
+                                    )}
+                                  </div>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                  <h4 className="font-semibold truncate">{booking.field?.name || 'Sân'}</h4>
-                                  {booking.field?.field_cluster && (
-                                    <p className="text-xs text-muted-foreground truncate">
-                                      {booking.field.field_cluster.name}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="shrink-0">
-                                <Badge variant={booking.status === 'confirmed' ? 'default' : booking.status === 'pending' ? 'secondary' : 'outline'}>
-                                  {booking.status === 'confirmed' ? '✅ Đã xác nhận' : 
-                                   booking.status === 'pending' ? '⏳ Chờ xác nhận' :
-                                   booking.status === 'completed' ? '✓ Hoàn thành' : '❌ Đã hủy'}
-                                </Badge>
-                              </div>
-                            </div>
-
-                            {/* Date & Time */}
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2 text-sm">
-                                <Calendar className="w-4 h-4 text-muted-foreground" />
-                                <span className="font-medium">Ngày đặt:</span>
-                                <span className="text-muted-foreground">{formatDate(bookingDate)}</span>
-                              </div>
-                              <div className="flex items-center gap-2 text-sm">
-                                <Clock className="w-4 h-4 text-muted-foreground" />
-                                <span className="font-medium">Giờ chơi:</span>
-                                <span className="text-muted-foreground">{booking.start_time} - {booking.end_time}</span>
-                              </div>
-                            </div>
-
-                            {/* Price */}
-                            {booking.total_price && (
-                              <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg">
-                                <div className="flex items-center gap-2">
-                                  <DollarSign className="w-4 h-4 text-primary" />
-                                  <span className="font-medium">Giá tiền</span>
-                                </div>
-                                <span className="text-lg font-bold text-primary">
-                                  {formatCurrency(booking.total_price)}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Payment Info */}
-                            {booking.payment_method && (
-                              <div className="space-y-3 pt-3 border-t">
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">Phương thức thanh toán:</span>
-                                  <Badge variant="outline" className="font-semibold text-primary">
-                                    {booking.payment_method === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
+                                <div className="shrink-0">
+                                  <Badge variant={booking.status === 'confirmed' ? 'default' : booking.status === 'pending' ? 'secondary' : 'outline'}>
+                                    {booking.status === 'confirmed' ? '✅ Đã xác nhận' :
+                                      booking.status === 'pending' ? '⏳ Chờ xác nhận' :
+                                        booking.status === 'completed' ? '✓ Hoàn thành' : '❌ Đã hủy'}
                                   </Badge>
                                 </div>
+                              </div>
 
-                                {/* Ghi chú cho cả hai phương thức */}
-                                <Alert className="bg-blue-50 border-blue-200">
-                                  <AlertCircle className="h-4 w-4 text-blue-600" />
-                                  <AlertDescription className="text-sm text-blue-800">
-                                    {booking.payment_method === 'transfer' 
-                                      ? 'Bạn có thể thanh toán trực tuyến tại đây hoặc đến thanh toán trực tiếp tại sân.'
-                                      : 'Bạn có thể đến thanh toán trực tiếp tại sân, dù chọn tiền mặt hay chuyển khoản.'
-                                    }
-                                  </AlertDescription>
-                                </Alert>
+                              {/* Date & Time */}
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <Calendar className="w-4 h-4 text-muted-foreground" />
+                                  <span className="font-medium">Ngày đặt:</span>
+                                  <span className="text-muted-foreground">{formatDate(bookingDate)}</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                  <Clock className="w-4 h-4 text-muted-foreground" />
+                                  <span className="font-medium">Giờ chơi:</span>
+                                  <span className="text-muted-foreground">{booking.start_time} - {booking.end_time}</span>
+                                </div>
+                              </div>
 
-                                {booking.payment_method === 'transfer' && (
-                                  <>
-                                    <div className="flex items-center justify-between text-sm">
-                                      <span className="text-muted-foreground">Trạng thái thanh toán:</span>
-                                      <Badge 
-                                        variant={booking.payment_status === 'paid' ? 'default' : 'secondary'}
-                                        className={booking.payment_status === 'paid' ? 'bg-green-100 text-green-800' : ''}
-                                      >
-                                        {booking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ xác nhận'}
-                                      </Badge>
-                                    </div>
+                              {/* Price */}
+                              {booking.total_price && (
+                                <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg">
+                                  <div className="flex items-center gap-2">
+                                    <DollarSign className="w-4 h-4 text-primary" />
+                                    <span className="font-medium">Giá tiền</span>
+                                  </div>
+                                  <span className="text-lg font-bold text-primary">
+                                    {formatCurrency(booking.total_price)}
+                                  </span>
+                                </div>
+                              )}
 
-                                    {booking.payment_proof_url && (
-                                      <Alert className={booking.payment_status === 'paid' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}>
-                                        <CheckCircle2 className={booking.payment_status === 'paid' ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-blue-600'} />
-                                        <AlertDescription className={booking.payment_status === 'paid' ? 'text-sm text-green-800' : 'text-sm text-blue-800'}>
-                                          {booking.payment_status === 'paid' 
-                                            ? 'Đã được chủ sân xác nhận thanh toán.'
-                                            : 'Đã upload chứng từ. Đang chờ chủ sân xác nhận.'
-                                          }
-                                        </AlertDescription>
-                                      </Alert>
-                                    )}
+                              {/* Payment Info */}
+                              {booking.payment_method && (
+                                <div className="space-y-3 pt-3 border-t">
+                                  <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">Phương thức thanh toán:</span>
+                                    <Badge variant="outline" className="font-semibold text-primary">
+                                      {booking.payment_method === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
+                                    </Badge>
+                                  </div>
 
-                                    {/* Thông báo khi chưa xác nhận */}
-                                    {booking.status === 'pending' && (!booking.payment_status || booking.payment_status !== 'paid') && (
-                                      <Alert className="bg-yellow-50 border-yellow-200">
-                                        <AlertCircle className="h-4 w-4 text-yellow-600" />
-                                        <AlertDescription className="text-sm text-yellow-800">
-                                          Booking đang chờ chủ sân xác nhận. Bạn có thể thanh toán sau khi được xác nhận.
-                                        </AlertDescription>
-                                      </Alert>
-                                    )}
-                                  </>
-                                )}
-
-                                {booking.payment_method === 'cash' && booking.payment_status !== 'paid' && (
-                                  <Alert className="bg-amber-50 border-amber-200">
-                                    <AlertCircle className="h-4 w-4 text-amber-600" />
-                                    <AlertDescription className="text-sm text-amber-800">
-                                      Chủ sân sẽ liên hệ với bạn để xác nhận và thanh toán bằng tiền mặt khi đến sân.
+                                  {/* Ghi chú cho cả hai phương thức */}
+                                  <Alert className="bg-blue-50 border-blue-200">
+                                    <AlertCircle className="h-4 w-4 text-blue-600" />
+                                    <AlertDescription className="text-sm text-blue-800">
+                                      {booking.payment_method === 'transfer'
+                                        ? 'Bạn có thể thanh toán trực tuyến tại đây hoặc đến thanh toán trực tiếp tại sân.'
+                                        : 'Bạn có thể đến thanh toán trực tiếp tại sân, dù chọn tiền mặt hay chuyển khoản.'
+                                      }
                                     </AlertDescription>
                                   </Alert>
-                                )}
-                              </div>
-                            )}
 
-                            {/* Contact Info */}
-                            {(booking.customer_name || booking.customer_phone) && (
-                              <div className="space-y-2 pt-2 border-t">
-                                {booking.customer_name && (
+                                  {booking.payment_method === 'transfer' && (
+                                    <>
+                                      <div className="flex items-center justify-between text-sm">
+                                        <span className="text-muted-foreground">Trạng thái thanh toán:</span>
+                                        <Badge
+                                          variant={booking.payment_status === 'paid' ? 'default' : 'secondary'}
+                                          className={booking.payment_status === 'paid' ? 'bg-green-100 text-green-800' : ''}
+                                        >
+                                          {booking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ xác nhận'}
+                                        </Badge>
+                                      </div>
+
+                                      {booking.payment_proof_url && (
+                                        <Alert className={booking.payment_status === 'paid' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}>
+                                          <CheckCircle2 className={booking.payment_status === 'paid' ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-blue-600'} />
+                                          <AlertDescription className={booking.payment_status === 'paid' ? 'text-sm text-green-800' : 'text-sm text-blue-800'}>
+                                            {booking.payment_status === 'paid'
+                                              ? 'Đã được chủ sân xác nhận thanh toán.'
+                                              : 'Đã upload chứng từ. Đang chờ chủ sân xác nhận.'
+                                            }
+                                          </AlertDescription>
+                                        </Alert>
+                                      )}
+
+                                      {/* Thông báo khi chưa xác nhận */}
+                                      {booking.status === 'pending' && (!booking.payment_status || booking.payment_status !== 'paid') && (
+                                        <Alert className="bg-yellow-50 border-yellow-200">
+                                          <AlertCircle className="h-4 w-4 text-yellow-600" />
+                                          <AlertDescription className="text-sm text-yellow-800">
+                                            Booking đang chờ chủ sân xác nhận. Bạn có thể thanh toán sau khi được xác nhận.
+                                          </AlertDescription>
+                                        </Alert>
+                                      )}
+                                    </>
+                                  )}
+
+                                  {booking.payment_method === 'cash' && booking.payment_status !== 'paid' && (
+                                    <Alert className="bg-amber-50 border-amber-200">
+                                      <AlertCircle className="h-4 w-4 text-amber-600" />
+                                      <AlertDescription className="text-sm text-amber-800">
+                                        Chủ sân sẽ liên hệ với bạn để xác nhận và thanh toán bằng tiền mặt khi đến sân.
+                                      </AlertDescription>
+                                    </Alert>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Contact Info */}
+                              {(booking.customer_name || booking.customer_phone) && (
+                                <div className="space-y-2 pt-2 border-t">
+                                  {booking.customer_name && (
+                                    <p className="text-sm">
+                                      <span className="text-muted-foreground">Người đặt:</span>{' '}
+                                      <span className="font-medium">{booking.customer_name}</span>
+                                    </p>
+                                  )}
+                                  {booking.customer_phone && (
+                                    <div className="flex items-center gap-2 text-sm">
+                                      <Phone className="w-3 h-3 text-muted-foreground" />
+                                      <span className="text-muted-foreground">{booking.customer_phone}</span>
+                                    </div>
+                                  )}
+                                  {booking.customer_email && (
+                                    <div className="flex items-center gap-2 text-sm">
+                                      <Mail className="w-3 h-3 text-muted-foreground" />
+                                      <span className="text-muted-foreground">{booking.customer_email}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Owner / Field Complex Contact Info */}
+                              {booking.field?.field_cluster && (
+                                <div className="space-y-2 pt-2 border-t">
+                                  <p className="text-sm font-semibold text-gray-700">Thông tin liên hệ chủ sân</p>
+                                  {booking.field.field_cluster.name && (
+                                    <div className="flex items-center gap-2 text-sm">
+                                      <Building2 className="w-3 h-3 text-muted-foreground" />
+                                      <span className="font-medium">{booking.field.field_cluster.name}</span>
+                                    </div>
+                                  )}
+                                  {booking.field.field_cluster.phone && (
+                                    <div className="flex items-center gap-2 text-sm">
+                                      <Phone className="w-3 h-3 text-muted-foreground" />
+                                      <a
+                                        href={`tel:${booking.field.field_cluster.phone}`}
+                                        className="text-blue-600 hover:underline"
+                                      >
+                                        {booking.field.field_cluster.phone}
+                                      </a>
+                                    </div>
+                                  )}
+                                  {booking.field.field_cluster.email && (
+                                    <div className="flex items-center gap-2 text-sm">
+                                      <Mail className="w-3 h-3 text-muted-foreground" />
+                                      <a
+                                        href={`mailto:${booking.field.field_cluster.email}`}
+                                        className="text-blue-600 hover:underline"
+                                      >
+                                        {booking.field.field_cluster.email}
+                                      </a>
+                                    </div>
+                                  )}
+                                  {booking.field.field_cluster.address && (
+                                    <div className="flex items-center gap-2 text-sm">
+                                      <MapPin className="w-3 h-3 text-muted-foreground" />
+                                      <span className="text-muted-foreground">{booking.field.field_cluster.address}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Note */}
+                              {booking.note && (
+                                <div className="p-3 bg-muted/50 rounded-lg">
                                   <p className="text-sm">
-                                    <span className="text-muted-foreground">Người đặt:</span>{' '}
-                                    <span className="font-medium">{booking.customer_name}</span>
+                                    <span className="font-medium">Ghi chú:</span> {booking.note}
                                   </p>
-                                )}
-                                {booking.customer_phone && (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <Phone className="w-3 h-3 text-muted-foreground" />
-                                    <span className="text-muted-foreground">{booking.customer_phone}</span>
-                                  </div>
-                                )}
-                                {booking.customer_email && (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <Mail className="w-3 h-3 text-muted-foreground" />
-                                    <span className="text-muted-foreground">{booking.customer_email}</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        )
+                      })}
+                      <Card
+                        key={booking.id}
+                        className="relative overflow-hidden border-2 border-green-200 hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+                      >
+                        {/* Gradient background giống sân cỏ */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-green-50 via-green-100 to-emerald-100 opacity-60" />
 
-                            {/* Owner / Field Complex Contact Info */}
+                        {/* Pattern sọc ngang như sân cỏ thật */}
+                        <div className="absolute inset-0 opacity-10">
+                          <div className="h-full w-full bg-[repeating-linear-gradient(0deg,transparent,transparent_10px,rgba(34,197,94,0.3)_10px,rgba(34,197,94,0.3)_20px)]" />
+                        </div>
+
+                        {/* Status badge */}
+                        <div className="absolute top-2 right-2 z-10">
+                          {booking.status === 'confirmed' && (
+                            <div className="bg-green-600 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow-md">
+                              <CheckCircle className="w-3 h-3" />
+                              Đã xác nhận
+                            </div>
+                          )}
+                          {booking.status === 'pending' && (
+                            <div className="bg-yellow-500 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1 shadow-md">
+                              <Clock className="w-3 h-3" />
+                              Chờ xác nhận
+                            </div>
+                          )}
+                        </div>
+
+                        <CardContent className="pt-4 pb-4 relative z-10">
+                          {/* Icon sân bóng lớn */}
+                          <div className="flex justify-center mb-3">
+                            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg border-2 border-white">
+                              <svg
+                                className="w-9 h-9 text-white"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                {/* Soccer field icon */}
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
+                                <path d="M12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z" />
+                                <circle cx="12" cy="12" r="2" />
+                              </svg>
+                            </div>
+                          </div>
+
+                          {/* Tên sân và loại sân */}
+                          <div className="text-center mb-3">
+                            <h4 className="font-bold text-lg text-green-900 mb-1 truncate">
+                              {booking.field?.name || 'Sân'}
+                            </h4>
+                            <div className="flex items-center justify-center gap-2">
+                              <span className="inline-flex items-center bg-green-600 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-sm">
+                                ⚽ {fieldType.toUpperCase()}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Thông tin chi tiết */}
+                          <div className="space-y-2 bg-white/80 backdrop-blur-sm rounded-lg p-3 shadow-sm border border-green-100">
                             {booking.field?.field_cluster && (
-                              <div className="space-y-2 pt-2 border-t">
-                                <p className="text-sm font-semibold text-gray-700">Thông tin liên hệ chủ sân</p>
-                                {booking.field.field_cluster.name && (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <Building2 className="w-3 h-3 text-muted-foreground" />
-                                    <span className="font-medium">{booking.field.field_cluster.name}</span>
-                                  </div>
-                                )}
-                                {booking.field.field_cluster.phone && (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <Phone className="w-3 h-3 text-muted-foreground" />
-                                    <a
-                                      href={`tel:${booking.field.field_cluster.phone}`}
-                                      className="text-blue-600 hover:underline"
-                                    >
-                                      {booking.field.field_cluster.phone}
-                                    </a>
-                                  </div>
-                                )}
-                                {booking.field.field_cluster.email && (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <Mail className="w-3 h-3 text-muted-foreground" />
-                                    <a
-                                      href={`mailto:${booking.field.field_cluster.email}`}
-                                      className="text-blue-600 hover:underline"
-                                    >
-                                      {booking.field.field_cluster.email}
-                                    </a>
-                                  </div>
-                                )}
-                                {booking.field.field_cluster.address && (
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <MapPin className="w-3 h-3 text-muted-foreground" />
-                                    <span className="text-muted-foreground">{booking.field.field_cluster.address}</span>
-                                  </div>
-                                )}
+                              <div className="flex items-center gap-2 text-xs text-gray-700">
+                                <MapPin className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                                <span className="font-medium truncate">{booking.field.field_cluster.name}</span>
                               </div>
                             )}
 
-                            {/* Note */}
-                            {booking.note && (
-                              <div className="p-3 bg-muted/50 rounded-lg">
-                                <p className="text-sm">
-                                  <span className="font-medium">Ghi chú:</span> {booking.note}
-                                </p>
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      )})}
+                            <div className="flex items-center gap-2 text-xs text-gray-700">
+                              <Calendar className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                              <span className="font-medium">{formatDate(bookingDate)}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-xs text-gray-700">
+                              <Clock className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                              <span className="font-semibold text-green-700">
+                                {booking.start_time} - {booking.end_time}
+                              </span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      )
+                      })}
                     </div>
                   )}
                 </CardContent>
-                </Card>
-              )}
+              </Card>
+            )}
           </TabsContent>
 
           {/* ── Tab: Đăng ký ── */}
@@ -1043,26 +1217,26 @@ const TournamentDetail = () => {
               // Vì khi chưa login, API /tournament-registrations sẽ lỗi 401 và set registrations = []
               const sourceRegistrations = (tournament.registrations && tournament.registrations.length > 0)
                 ? tournament.registrations.map((r: any) => ({
-                    ...r,
-                    // Backend dùng registration_status, frontend dùng status
-                    status: r.registration_status || r.status,
-                    tournament_id: r.tournament_id || tournament.id,
-                    registered_at: r.registered_at || r.registration_date || r.created_at || new Date().toISOString(),
-                  }))
+                  ...r,
+                  // Backend dùng registration_status, frontend dùng status
+                  status: r.registration_status || r.status,
+                  tournament_id: r.tournament_id || tournament.id,
+                  registered_at: r.registered_at || r.registration_date || r.created_at || new Date().toISOString(),
+                }))
                 : registrations;
-              
+
               // Nếu không phải organizer/admin thì chỉ hiển thị các đội đã approved
-              const displayRegistrations = canManage 
-                ? sourceRegistrations 
+              const displayRegistrations = canManage
+                ? sourceRegistrations
                 : sourceRegistrations.filter((r: any) => r.status === 'approved');
-              
+
               return displayRegistrations.length === 0 ? (
-                <TabEmpty 
-                  icon={ClipboardList} 
-                  text={canManage 
-                    ? "Chưa có đội nào đăng ký tham gia giải đấu này." 
+                <TabEmpty
+                  icon={ClipboardList}
+                  text={canManage
+                    ? "Chưa có đội nào đăng ký tham gia giải đấu này."
                     : "Chưa có đội nào được duyệt tham gia giải đấu này."
-                  } 
+                  }
                 />
               ) : (
                 <>
@@ -1108,42 +1282,32 @@ const TournamentDetail = () => {
                 registrations={registrations}
                 teams={tournamentTeams}
                 matches={allMatches}
-                onGenerateSchedule={handleGenerateSchedule}
+                onGenerateSchedule={handleOpenScheduleDialog}
                 onDeleteSchedule={handleDeleteSchedule}
                 onPublishSchedule={handlePublishSchedule}
                 onUnpublishSchedule={handleUnpublishSchedule}
                 onAssignTeam={handleAssignTeam}
                 onUpdateMatch={handleUpdateMatch}
+                onScoreUpdated={loadBracket}
                 isGenerating={isGeneratingSchedule}
                 isDeleting={isDeletingSchedule}
                 isPublishing={isPublishingSchedule}
                 isUnpublishing={isUnpublishingSchedule}
                 schedulePublished={tournament.schedule_published || false}
               />
-            ) : tournament.schedule_published && (!bracket || allMatches.length === 0) ? (
-              <TabEmpty icon={Swords} text="Lịch thi đấu đang được chuẩn bị. Vui lòng quay lại sau." />
-            ) : tournament.schedule_published && bracket && allMatches.length > 0 ? (
-              <div className="space-y-4">
-                <Card className="border-green-200 bg-green-50">
-                  <CardContent className="pt-5">
-                    <div className="flex items-start gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
-                      <p className="text-sm text-green-800">
-                        Lịch thi đấu đã được công bố. Xem chi tiết các trận đấu bên dưới.
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {allMatches.map((match) => (
-                    <MatchCard
-                      key={match.id}
-                      match={match}
-                      onClick={canManage ? handleMatchClick : undefined}
-                    />
-                  ))}
-                </div>
-              </div>
+            ) : tournament.schedule_published ? (
+              <TournamentBracketView
+                tournamentId={tournamentId}
+                format={tournament.format}
+                bracket={bracket}
+                canManage={canManage}
+                onScoreUpdated={loadBracket}
+                myTeamId={
+                  user
+                    ? (teams.find((t) => String(t.captain_id) === String(user.id) || String((t as any).captain_user_id) === String(user.id))?.id)
+                    : undefined
+                }
+              />
             ) : (
               <Card className="border-yellow-200 bg-yellow-50">
                 <CardContent className="py-12 text-center space-y-3">
@@ -1163,12 +1327,111 @@ const TournamentDetail = () => {
               <TabLoading />
             ) : standings.length === 0 ? (
               <TabEmpty icon={BarChart3} text="Chưa có dữ liệu xếp hạng. Bảng xếp hạng sẽ cập nhật sau mỗi trận đấu." />
+            ) : bracket?.groups && bracket.groups.length > 1 ? (
+              // Multiple groups → show each group's standings in a grid
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {bracket.groups.map((group: any) => {
+                  const groupStandings = standings.filter((s) => s.group_id === group.id);
+                  return groupStandings.length > 0 ? (
+                    <GroupStandingsTable
+                      key={group.id}
+                      standings={groupStandings}
+                      groupName={group.group_name}
+                    />
+                  ) : null;
+                })}
+              </div>
             ) : (
               <GroupStandingsTable standings={standings} />
             )}
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Schedule Generation Dialog */}
+      <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Cấu hình sinh lịch thi đấu</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              Tổng số đội đã duyệt: <span className="font-semibold text-foreground">{approvedTeamsForSchedule}</span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="auto-select-fields"
+                checked={scheduleAutoSelectFields}
+                onCheckedChange={(checked) => setScheduleAutoSelectFields(checked === true)}
+              />
+              <Label
+                htmlFor="auto-select-fields"
+                className="text-sm font-normal cursor-pointer"
+              >
+                Tự động chọn tất cả sân đã đặt (khuyên dùng)
+              </Label>
+            </div>
+
+            {tournament?.format === 'group_knockout' && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="num-groups">Số bảng (groups)</Label>
+                  <Input
+                    id="num-groups"
+                    type="number"
+                    min="2"
+                    max="8"
+                    value={scheduleNumGroups}
+                    onChange={(e) => handleNumGroupsChange(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Số lượng bảng trong vòng bảng (2-8). Khi đổi số bảng, hệ thống tự tính số đội mỗi bảng theo tổng đội.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="teams-per-group">Số đội mỗi bảng</Label>
+                  <Input
+                    id="teams-per-group"
+                    type="number"
+                    min="2"
+                    max="16"
+                    value={scheduleTeamsPerGroup}
+                    onChange={(e) => handleTeamsPerGroupChange(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Số đội mỗi bảng (2-16). Khi đổi số đội/bảng, hệ thống tự tính lại số bảng theo tổng đội.</p>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Cấu hình hiện tại: {scheduleNumGroups} bảng, khoảng {scheduleTeamsPerGroup} đội/bảng. Hệ thống lấy 2 đội/bảng (nhất + nhì) vào vòng knockout với cơ chế cross-matching.
+                </p>
+              </>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="days-between">Ngày giữa các vòng</Label>
+              <Input
+                id="days-between"
+                type="number"
+                min="1"
+                max="30"
+                value={scheduleDaysBetweenRounds}
+                onChange={(e) => setScheduleDaysBetweenRounds(Math.max(1, Math.min(30, parseInt(e.target.value) || 3)))}
+              />
+              <p className="text-xs text-muted-foreground">Số ngày cách nhau giữa các vòng đấu</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>
+              Hủy
+            </Button>
+            <Button onClick={handleGenerateSchedule} disabled={isGeneratingSchedule}>
+              {isGeneratingSchedule ? 'Đang sinh...' : 'Sinh lịch'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Registration Dialog */}
       <RegistrationFormDialog
