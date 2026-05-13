@@ -137,7 +137,10 @@ const TournamentDetail = () => {
   const [scheduleNumGroups, setScheduleNumGroups] = useState<number>(2);
   const [scheduleTeamsPerGroup, setScheduleTeamsPerGroup] = useState<number>(4);
   const [scheduleDaysBetweenRounds, setScheduleDaysBetweenRounds] = useState<number>(3);
+  const [scheduleMatchDuration, setScheduleMatchDuration] = useState<number>(60);
+  const [schedulePreparationTime, setSchedulePreparationTime] = useState<number>(15);
   const [scheduleAutoSelectFields, setScheduleAutoSelectFields] = useState<boolean>(true);
+  const [scheduleCreateThirdPlaceMatch, setScheduleCreateThirdPlaceMatch] = useState<boolean>(false);
 
   // Standings — derived from bracket data (groups[].standings[])
   // Không cần gọi API riêng, lấy trực tiếp từ bracket
@@ -487,13 +490,18 @@ const TournamentDetail = () => {
         start_date: tournament.start_date,
         end_date: tournament.end_date,
         days_between_rounds: scheduleDaysBetweenRounds,
+        match_duration: scheduleMatchDuration,
+        preparation_time: schedulePreparationTime,
       };
 
-      // Chỉ truyền field_ids khi tắt auto-select (hiện tại chưa có UI chọn sân thủ công)
-      // Khi bật auto-select, backend tự lấy từ bookings
       if (!scheduleAutoSelectFields) {
         // TODO: Thêm UI chọn sân thủ công sau
         // params.field_ids = selectedFieldIds;
+      }
+
+      // Thêm tùy chọn tạo trận tranh hạng 3 cho knockout và group_knockout
+      if (tournament.format === 'knockout' || tournament.format === 'group_knockout') {
+        params.create_third_place_match = scheduleCreateThirdPlaceMatch;
       }
 
       if (tournament.format === 'group_knockout') {
@@ -1203,6 +1211,51 @@ const TournamentDetail = () => {
               />
               <p className="text-xs text-muted-foreground">Số ngày cách nhau giữa các vòng đấu</p>
             </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="match-duration">Thời gian trận (phút)</Label>
+                <Input
+                  id="match-duration"
+                  type="number"
+                  min="30"
+                  max="180"
+                  value={scheduleMatchDuration}
+                  onChange={(e) => setScheduleMatchDuration(Math.max(30, Math.min(180, parseInt(e.target.value) || 60)))}
+                />
+                <p className="text-xs text-muted-foreground">Thời gian trung bình 1 trận</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="preparation-time">Thời gian chuẩn bị (phút)</Label>
+                <Input
+                  id="preparation-time"
+                  type="number"
+                  min="0"
+                  max="60"
+                  value={schedulePreparationTime}
+                  onChange={(e) => setSchedulePreparationTime(Math.max(0, Math.min(60, parseInt(e.target.value) || 15)))}
+                />
+                <p className="text-xs text-muted-foreground">Thời gian dọn dẹp sau trận</p>
+              </div>
+            </div>
+
+            {(tournament?.format === 'knockout' || tournament?.format === 'group_knockout') && (
+              <div className="flex items-center space-x-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                <Checkbox
+                  id="create-third-place"
+                  checked={scheduleCreateThirdPlaceMatch}
+                  onCheckedChange={(checked) => setScheduleCreateThirdPlaceMatch(checked === true)}
+                />
+                <Label
+                  htmlFor="create-third-place"
+                  className="text-sm font-normal cursor-pointer flex-1"
+                >
+                  <div className="font-semibold text-foreground">🥉 Tạo trận tranh hạng 3</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">Thêm trận tranh hạng 3 giữa 2 đội thua bán kết</p>
+                </Label>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
