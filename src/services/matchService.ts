@@ -72,6 +72,8 @@ export interface MatchRequest {
 export interface ScoreUpdateRequest {
   home_score: number;
   away_score: number;
+  home_penalty_score?: number;
+  away_penalty_score?: number;
   status: 'completed' | 'in_progress';
 }
 
