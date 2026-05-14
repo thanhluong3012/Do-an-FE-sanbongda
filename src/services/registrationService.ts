@@ -115,4 +115,14 @@ export const registrationService = {
       throw error;
     }
   },
+
+  // Hủy đăng ký (User)
+  cancel: async (id: number): Promise<void> => {
+    try {
+      await api.delete(`/tournament-registrations/${id}`);
+    } catch (error) {
+      console.error(`Error canceling registration ${id}:`, error);
+      throw error;
+    }
+  },
 };

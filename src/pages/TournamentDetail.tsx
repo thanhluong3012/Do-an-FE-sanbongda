@@ -33,8 +33,18 @@ import { TournamentBracketView } from '@/components/Tournament/TournamentBracket
 import {
   Trophy, MapPin, Users, Calendar, ArrowLeft, CheckCircle,
   Loader2, User, Megaphone, AlertCircle, ClipboardList,
-  Swords, BarChart3, Info, Clock, DollarSign, Phone, Mail, Building2, CheckCircle2
+  Swords, BarChart3, Info, Clock, DollarSign, Phone, Mail, Building2, CheckCircle2, X
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
@@ -92,6 +102,8 @@ const TournamentDetail = () => {
   // Registrations tab
   const [registrations, setRegistrations] = useState<TournamentRegistration[]>([]);
   const [regLoading, setRegLoading] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
   // Real-time sync từ Owner khi confirm payment
   const handleTournamentUpdate = useCallback((message: SyncMessage) => {
@@ -261,6 +273,24 @@ const TournamentDetail = () => {
 
     return Array.from(uniqueTeamIds);
   }, [user, teams, bracket?.teams, tournament?.teams, registrations]);
+
+  // Tìm đăng ký của user hiện tại
+  const findMyRegistration = useCallback(() => {
+    if (!user || userTeamIds.length === 0) return null;
+    
+    // Tìm trong registrations hoặc tournament.registrations
+    const allRegistrations = [
+      ...registrations,
+      ...(tournament?.registrations || [])
+    ];
+
+    return allRegistrations.find((r: any) => 
+      userTeamIds.includes(r.team_id) && 
+      ['pending', 'approved'].includes(r.status || r.registration_status)
+    );
+  }, [user, userTeamIds, registrations, tournament?.registrations]);
+
+  const myRegistration = findMyRegistration();
 
   useEffect(() => {
     if (tournamentId) {
@@ -455,6 +485,34 @@ const TournamentDetail = () => {
       await loadTournament();
     } catch (err: any) {
       toast({ title: 'Lỗi', description: err.response?.data?.message || 'Không thể từ chối đăng ký', variant: 'destructive' });
+    }
+  };
+
+  const handleCancelRegistration = async () => {
+    const myRegistration = findMyRegistration();
+    if (!myRegistration) {
+      toast({ title: 'Lỗi', description: 'Không tìm thấy đăng ký của bạn', variant: 'destructive' });
+      return;
+    }
+
+    setIsCancelling(true);
+    try {
+      await registrationService.cancel(myRegistration.id);
+      toast({ 
+        title: 'Thành công', 
+        description: 'Đã hủy đăng ký tham gia giải đấu' 
+      });
+      setCancelDialogOpen(false);
+      await loadRegistrations();
+      await loadTournament();
+    } catch (err: any) {
+      toast({ 
+        title: 'Lỗi', 
+        description: err.response?.data?.message || 'Không thể hủy đăng ký', 
+        variant: 'destructive' 
+      });
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -738,16 +796,28 @@ const TournamentDetail = () => {
               </div> :
                 <div className="flex flex-wrap gap-2">
                   {tournament.status === 'open' && !canManage && (
-                    <Button
-                      size="lg"
-                      className={`gap-2 ${isFull ? 'opacity-60 cursor-not-allowed' : ''}`}
-                      onClick={() => !isFull && setIsRegistrationDialogOpen(true)}
-                      disabled={isFull}
-                      variant={isFull ? 'outline' : 'default'}
-                    >
-                      <CheckCircle className="w-5 h-5" />
-                      {isFull ? 'Đã đủ đội' : 'Đăng ký tham gia'}
-                    </Button>
+                    myRegistration ? (
+                      <Button
+                        size="lg"
+                        variant="destructive"
+                        className="gap-2"
+                        onClick={() => setCancelDialogOpen(true)}
+                      >
+                        <X className="w-5 h-5" />
+                        Hủy đăng ký
+                      </Button>
+                    ) : (
+                      <Button
+                        size="lg"
+                        className={`gap-2 ${isFull ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        onClick={() => !isFull && setIsRegistrationDialogOpen(true)}
+                        disabled={isFull}
+                        variant={isFull ? 'outline' : 'default'}
+                      >
+                        <CheckCircle className="w-5 h-5" />
+                        {isFull ? 'Đã đủ đội' : 'Đăng ký tham gia'}
+                      </Button>
+                    )
                   )}
                   {canPublish && (
                     <Button size="lg" className="gap-2 bg-green-600 hover:bg-green-700" onClick={handlePublish} disabled={isPublishing}>
@@ -1316,6 +1386,36 @@ const TournamentDetail = () => {
           awayTeamName={selectedMatch.away_team?.name || 'Away'}
         />
       )}
+
+      {/* Cancel Registration Confirm Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận hủy đăng ký</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn hủy đăng ký tham gia giải đấu này không? 
+              Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Không, giữ đăng ký</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleCancelRegistration}
+              disabled={isCancelling}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isCancelling ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Đang hủy...
+                </>
+              ) : (
+                'Có, hủy đăng ký'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Footer />
     </div>
