@@ -17,7 +17,7 @@ const Header = () => {
   const navigate = useNavigate();
 
   const navLinks = [
-    { name: "Tìm sân", href: "/fields", icon: MapPin, isRoute: true },
+    { name: "Đặt lịch", href: "/fields", icon: MapPin, isRoute: true },
     { name: "Giải đấu", href: "/tournaments", icon: Trophy, isRoute: true },
     { name: "Dành cho chủ sân", href: "/register/field-owner", icon: Building2, isRoute: true, highlight: true },
   ];

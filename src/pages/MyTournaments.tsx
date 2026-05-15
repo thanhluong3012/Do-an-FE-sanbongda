@@ -10,7 +10,17 @@ import { Tournament, tournamentService } from '@/services/tournamentService';
 import { TournamentStatusBadge, TournamentFormatBadge } from '@/components/Tournament/TournamentStatusBadge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { Trophy, Plus, Loader2, AlertCircle, RefreshCw, Calendar, Users, MapPin, Megaphone, DollarSign, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { Trophy, Plus, Loader2, AlertCircle, RefreshCw, Calendar, Users, MapPin, Megaphone, DollarSign, CheckCircle2, Clock, XCircle, FlagOff } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
@@ -22,6 +32,8 @@ const MyTournaments = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [publishingId, setPublishingId] = useState<number | null>(null);
+  const [completingId, setCompletingId] = useState<number | null>(null);
+  const [confirmCompleteId, setConfirmCompleteId] = useState<number | null>(null);
   const [showDeleted, setShowDeleted] = useState(true); // Hiển thị giải đã xóa
 
   // Check authentication
@@ -106,6 +118,24 @@ const MyTournaments = () => {
         {config.label}
       </Badge>
     );
+  };
+
+  const handleComplete = async (tournamentId: number) => {
+    setCompletingId(tournamentId);
+    try {
+      await tournamentService.complete(tournamentId);
+      toast({ title: 'Thành công', description: 'Giải đấu đã được kết thúc!' });
+      await loadMyTournaments();
+    } catch (err: any) {
+      toast({
+        title: 'Lỗi',
+        description: err.response?.data?.message || 'Không thể kết thúc giải đấu',
+        variant: 'destructive',
+      });
+    } finally {
+      setCompletingId(null);
+      setConfirmCompleteId(null);
+    }
   };
 
   const handleRemoveDeleted = (tournamentId: number) => {
@@ -397,6 +427,23 @@ const MyTournaments = () => {
                               Duyệt đăng ký ({tournament.registered_teams_count ?? 0})
                             </Button>
                           )}
+
+                          {(tournament.status === 'open' || tournament.status === 'in_progress') && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="w-full gap-2"
+                              onClick={() => setConfirmCompleteId(tournament.id)}
+                              disabled={completingId === tournament.id}
+                            >
+                              {completingId === tournament.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <FlagOff className="w-4 h-4" />
+                              )}
+                              Kết thúc giải
+                            </Button>
+                          )}
                         </>
                       )}
                     </div>
@@ -408,6 +455,29 @@ const MyTournaments = () => {
           </div>
         )}
       </main>
+      {/* Confirm complete dialog */}
+      <AlertDialog open={confirmCompleteId !== null} onOpenChange={(open) => { if (!open) setConfirmCompleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Kết thúc giải đấu?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Hành động này sẽ kết thúc giải đấu và không thể hoàn tác. Bạn có chắc chắn muốn tiếp tục không?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={completingId !== null}>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={completingId !== null}
+              onClick={() => { if (confirmCompleteId !== null) void handleComplete(confirmCompleteId); }}
+            >
+              {completingId !== null ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Xác nhận kết thúc
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Footer />
     </div>
   );

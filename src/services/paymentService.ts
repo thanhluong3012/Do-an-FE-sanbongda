@@ -198,7 +198,7 @@ export const paymentService = {
   confirmBooking: async (
     id: number,
     data: {
-      action: 'confirmed' | 'rejected' | 'approve' | 'reject';
+      action: 'confirmed' | 'approve' | 'reject';
       note?: string
     }
   ): Promise<any> => {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import React from 'react';
 import RoleBasedLayout from '@/components/layout/RoleBasedLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,10 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { 
   AlertCircle, Calendar as CalendarIcon, Clock, DollarSign, 
   Filter, RefreshCw, User, Phone, MapPin, CheckCircle, XCircle, Loader2,
-  ChevronDown, ChevronUp, Trophy
+  ChevronDown, ChevronUp, Trophy, Search
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -31,6 +32,9 @@ const OwnerBookings = () => {
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>('all');
   const [selectedBookingType, setSelectedBookingType] = useState<string>('all');
   const [expandedTournaments, setExpandedTournaments] = useState<Set<number>>(new Set());
+  
+  // State tìm kiếm
+  const [searchTerm, setSearchTerm] = useState<string>('');
 
   const toggleTournamentExpand = (tournamentId: number) => {
     setExpandedTournaments(prev => {
@@ -63,17 +67,31 @@ const OwnerBookings = () => {
 
   const handleConfirmBooking = async (bookingId: number, data: { action: 'approve' | 'reject' }) => {
     console.log(`Attempting to ${data.action} booking ID ${bookingId}...`);
-    const result = await paymentService.confirmBooking(bookingId, data);
-    if (result.success) { 
+    
+    try {
+      const result = await paymentService.confirmBooking(bookingId, data);
+      
+      if (result.success) { 
+        toast({
+          title: 'Thành công',
+          description: result.message || 'Đã xử lý thành công',
+        });
+        // Delay để backend kịp update trước khi reload
+        await new Promise(resolve => setTimeout(resolve, 500));
+        loadBookings(); // Tải lại dữ liệu
+      } else {
+        toast({
+          title: 'Lỗi', 
+          description: result.error || 'Có lỗi xảy ra',
+          variant: 'destructive',
+        });
+      }
+    } catch (error: any) {
+      // NẾU CÓ LỖI TỪ API THÌ SẼ NHẢY VÀO ĐÂY ĐỂ HIỆN THÔNG BÁO, KHÔNG BỊ "IM RE" NỮA
+      console.error("API Error caught in UI: ", error);
       toast({
-        title: 'Thành công',
-        description: result.message,
-      });
-      loadBookings(); // Reload bookings after confirming
-    } else {
-      toast({
-        title: 'Lỗi', 
-        description: result.error,
+        title: 'Lỗi hệ thống/Dữ liệu',
+        description: error.message || error.error || 'Không thể từ chối booking này!',
         variant: 'destructive',
       });
     }
@@ -123,7 +141,6 @@ const OwnerBookings = () => {
     }
   };  
       
-
   useEffect(() => {
     const init = async () => {
       await loadFieldClusters();
@@ -242,6 +259,18 @@ const OwnerBookings = () => {
     }
   };
 
+  // Logic Search nội bộ (Không gọi API lại)
+  const filteredDisplayBookings = useMemo(() => {
+    if (!searchTerm.trim()) return bookings;
+    const term = searchTerm.toLowerCase();
+    return bookings.filter(b => 
+      b.customer_name?.toLowerCase().includes(term) ||
+      b.customer_phone?.includes(term) ||
+      b.id.toString() === term ||
+      b.tournament_name?.toLowerCase().includes(term)
+    );
+  }, [bookings, searchTerm]);
+
   const getPaymentMethodBadge = (paymentMethod?: string) => {
     if (paymentMethod === 'cash') {
       return (
@@ -307,10 +336,21 @@ const OwnerBookings = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Filter className="w-5 h-5" />
-              Bộ lọc
+              Bộ lọc & Tìm kiếm
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Search Bar */}
+            <div className="mb-4 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input 
+                placeholder="Tìm kiếm theo tên khách, SĐT, mã booking hoặc tên giải đấu..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               {/* Date Filter */}
               <div>
@@ -420,7 +460,7 @@ const OwnerBookings = () => {
             <CardDescription>
               {selectedDate ? `Ngày ${format(selectedDate, 'dd/MM/yyyy', { locale: vi })}` : 'Tất cả các ngày'}
               {' - '}
-              {bookings.length} booking
+              {filteredDisplayBookings.length} booking
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -429,11 +469,11 @@ const OwnerBookings = () => {
                 <Loader2 className="w-8 h-8 text-primary mx-auto mb-4 animate-spin" />
                 <p className="text-gray-500">Đang tải dữ liệu...</p>
               </div>
-            ) : bookings.length === 0 ? (
+            ) : filteredDisplayBookings.length === 0 ? (
               <div className="text-center py-12">
                 <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Không có booking nào</h3>
-                <p className="text-gray-500">Chưa có booking nào cho ngày này</p>
+                <p className="text-gray-500">Chưa có booking nào khớp với tìm kiếm hoặc bộ lọc</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -453,7 +493,7 @@ const OwnerBookings = () => {
                   </thead>
                   <tbody className="divide-y">
                     {(() => {
-                      const { regular, tournaments } = groupBookings(bookings);
+                      const { regular, tournaments } = groupBookings(filteredDisplayBookings);
                       const rows: React.ReactNode[] = [];
 
                       // Render tournament groups
@@ -746,7 +786,7 @@ const OwnerBookings = () => {
                             <td className="px-2 py-2">
                               <div className="flex flex-col gap-2">
                                 {/* Hiện nút nếu đang pending, ngược lại thì hiện Badge text */}
-                                {booking.payment_status === 'pending' && booking.status !== 'confirmed' ? (
+                                {booking.payment_status === 'pending' && booking.status === 'pending' ? (
                                   <div className="flex gap-1 mt-1">
                                     <Button 
                                       size="sm" 

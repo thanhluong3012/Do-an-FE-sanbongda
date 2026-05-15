@@ -31,6 +31,11 @@ const ROUND_TYPE_ORDER: Record<string, number> = {
 };
 
 const initials = (name: string) => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+const normalizeText = (value?: string) =>
+  (value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 
 interface GroupData {
   id: number;
@@ -68,6 +73,12 @@ interface Props {
   canManage?: boolean;
   onScoreUpdated?: () => void;
   userTeamIds?: number[]; // Danh sách ID của các đội mà user là captain
+}
+
+interface PodiumTeam {
+  id: number;
+  name: string;
+  logo?: string;
 }
 
 export const TournamentBracketView = ({
@@ -167,6 +178,11 @@ export const TournamentBracketView = ({
     [rounds]
   );
 
+  const knockoutMatches = useMemo(
+    () => knockoutRounds.flatMap((r) => r.matches ?? []),
+    [knockoutRounds]
+  );
+
   const allTeams = useMemo(() => {
     const map = new Map<number, { id: number; name: string; logo?: string }>();
     groups.forEach((g) => {
@@ -179,9 +195,88 @@ export const TournamentBracketView = ({
 
   const allMatches = useMemo(() => {
     const groupMatches = groups.flatMap((g) => g.matches ?? []);
-    const knockoutMatches = knockoutRounds.flatMap((r) => r.matches ?? []);
     return [...groupMatches, ...knockoutMatches];
-  }, [groups, knockoutRounds]);
+  }, [groups, knockoutMatches]);
+
+  const areAllKnockoutMatchesScored = useMemo(() => {
+    if (knockoutMatches.length === 0) return false;
+    return knockoutMatches.every(
+      (m) =>
+        m.status === 'completed' ||
+        (m.home_score !== null && m.home_score !== undefined && m.away_score !== null && m.away_score !== undefined)
+    );
+  }, [knockoutMatches]);
+
+  const getWinnerTeam = (match?: Match): PodiumTeam | null => {
+    if (!match) return null;
+
+    if (match.winner_id) {
+      if (match.home_team?.id === match.winner_id) return match.home_team;
+      if (match.away_team?.id === match.winner_id) return match.away_team;
+    }
+
+    if (match.home_score === null || match.home_score === undefined || match.away_score === null || match.away_score === undefined) {
+      return null;
+    }
+
+    if (match.home_score > match.away_score) return match.home_team ?? null;
+    if (match.away_score > match.home_score) return match.away_team ?? null;
+    return null;
+  };
+
+  const getLoserTeam = (match?: Match): PodiumTeam | null => {
+    if (!match) return null;
+    const winner = getWinnerTeam(match);
+    if (!winner) return null;
+    if (winner.id === match.home_team?.id) return match.away_team ?? null;
+    if (winner.id === match.away_team?.id) return match.home_team ?? null;
+    return null;
+  };
+
+  const knockoutRanking = useMemo(() => {
+    if (!areAllKnockoutMatchesScored) {
+      return {
+        champion: null as PodiumTeam | null,
+        runnerUp: null as PodiumTeam | null,
+        third: null as PodiumTeam | null,
+        fourth: null as PodiumTeam | null,
+      };
+    }
+
+    const finalRound = knockoutRounds.find((r) => {
+      const type = normalizeText(r.round_type);
+      const name = normalizeText(r.round_name);
+      return type === 'final' || name.includes('chung ket') || name.includes('final');
+    }) ||
+      [...knockoutRounds]
+        .sort((a, b) => b.round_order - a.round_order)
+        .find((r) => {
+          const type = normalizeText(r.round_type);
+          const name = normalizeText(r.round_name);
+          return type !== 'third_place' && !name.includes('tranh hang 3');
+        });
+
+    const thirdPlaceRound = knockoutRounds.find((r) => {
+      const type = normalizeText(r.round_type);
+      const name = normalizeText(r.round_name);
+      return type === 'third_place' || name.includes('tranh hang 3') || name.includes('third');
+    });
+
+    const finalMatch = finalRound?.matches?.[0]
+      || knockoutMatches.find((m) => normalizeText(m.round?.round_type) === 'final')
+      || knockoutMatches.find((m) => normalizeText(m.round?.name).includes('chung ket'));
+
+    const thirdPlaceMatch = thirdPlaceRound?.matches?.[0]
+      || knockoutMatches.find((m) => normalizeText(m.round?.round_type) === 'third_place')
+      || knockoutMatches.find((m) => normalizeText(m.round?.name).includes('tranh hang 3'));
+
+    return {
+      champion: getWinnerTeam(finalMatch),
+      runnerUp: getLoserTeam(finalMatch),
+      third: getWinnerTeam(thirdPlaceMatch),
+      fourth: getLoserTeam(thirdPlaceMatch),
+    };
+  }, [areAllKnockoutMatchesScored, knockoutMatches, knockoutRounds]);
 
   const filteredMatches = useMemo(() => {
     let result = allMatches;
@@ -295,6 +390,7 @@ export const TournamentBracketView = ({
 
   const hasGroups = groups.length > 0;
   const hasKnockout = knockoutRounds.length > 0;
+  const showKnockoutRankingTab = format === 'knockout' && hasKnockout;
   const defaultTab = hasGroups ? 'groups' : hasKnockout ? 'knockout' : 'teams';
 
   if (loading) {
@@ -397,7 +493,7 @@ export const TournamentBracketView = ({
             )}
             <TabsTrigger value="teams" className="gap-2">
               <Users className="w-4 h-4" />
-              Xem theo đội
+              {showKnockoutRankingTab ? 'Bảng xếp hạng' : 'Xem theo đội'}
             </TabsTrigger>
           </TabsList>
 
@@ -450,71 +546,127 @@ export const TournamentBracketView = ({
 
           {/* Teams Tab */}
           <TabsContent value="teams" className="space-y-4">
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Chọn đội để xem lịch thi đấu:</p>
-              <div className="flex flex-wrap gap-2">
-                {allTeams.map((t) => (
-                  <button
-                    key={t.id}
-                    className={`
+            {showKnockoutRankingTab ? (
+              !areAllKnockoutMatchesScored ? (
+                <Card>
+                  <CardContent className="py-12 text-center space-y-2">
+                    <Trophy className="w-10 h-10 text-muted-foreground mx-auto" />
+                    <p className="font-medium">Bảng xếp hạng knock-out chưa sẵn sàng</p>
+                    <p className="text-sm text-muted-foreground">
+                      Cần cập nhật tỉ số đầy đủ cho tất cả trận đấu ở nhánh knock-out để xác định hạng 1-4.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50">
+                          <tr className="border-b">
+                            <th className="text-left font-semibold px-4 py-3 w-28">Thứ hạng</th>
+                            <th className="text-left font-semibold px-4 py-3">Đội</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            { rank: 'Hạng 1', team: knockoutRanking.champion, medal: '🏆' },
+                            { rank: 'Hạng 2', team: knockoutRanking.runnerUp, medal: '🥈' },
+                            { rank: 'Hạng 3', team: knockoutRanking.third, medal: '🥉' },
+                            { rank: 'Hạng 4', team: knockoutRanking.fourth, medal: '4️⃣' },
+                          ].map((row) => (
+                            <tr key={row.rank} className="border-b last:border-b-0">
+                              <td className="px-4 py-3 font-medium">{row.medal} {row.rank}</td>
+                              <td className="px-4 py-3">
+                                {row.team ? (
+                                  <div className="flex items-center gap-2">
+                                    <Avatar className="w-7 h-7">
+                                      {row.team.logo && <AvatarImage src={row.team.logo} alt={row.team.name} />}
+                                      <AvatarFallback className="text-xs">{initials(row.team.name)}</AvatarFallback>
+                                    </Avatar>
+                                    <span className="font-medium">{row.team.name}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground">Chưa xác định</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            ) : (
+              <>
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">Chọn đội để xem lịch thi đấu:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {allTeams.map((t) => (
+                      <button
+                        key={t.id}
+                        className={`
                       flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all
                       ${filterTeamId === t.id ? 'bg-primary text-primary-foreground border-primary shadow-md' :
-                        userTeamIds.includes(t.id) ? 'border-primary text-primary bg-primary/5 hover:bg-primary/10' :
-                          'border-border hover:border-primary/50 hover:shadow-sm'}
+                            userTeamIds.includes(t.id) ? 'border-primary text-primary bg-primary/5 hover:bg-primary/10' :
+                              'border-border hover:border-primary/50 hover:shadow-sm'}
                     `}
-                    onClick={() =>
-                      filterTeamId === t.id ? clearTeamFilter() : handleTeamClick(t.id, t.name)
-                    }
-                  >
-                    <Avatar className="w-6 h-6">
-                      {t.logo && <AvatarImage src={t.logo} />}
-                      <AvatarFallback className="text-xs">{initials(t.name)}</AvatarFallback>
-                    </Avatar>
-                    <span className="font-medium">{t.name}</span>
-                    {userTeamIds.includes(t.id) && <Badge className="text-xs h-5">Tôi</Badge>}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {filterTeamId ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <Shield className="w-5 h-5 text-primary" />
-                    Lịch thi đấu — {filterTeamName}
-                  </h3>
-                  <Button size="sm" variant="ghost" onClick={clearTeamFilter}>Xóa lọc</Button>
-                </div>
-                {filteredMatches.length === 0 ? (
-                  <Card>
-                    <CardContent className="py-12 text-center text-sm text-muted-foreground">
-                      Chưa có trận đấu
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {filteredMatches.map((m) => (
-                      <MatchCard
-                        key={m.id}
-                        match={m}
-                        highlightTeamId={filterTeamId}
-                        canManage={canManage}
-                        onEditScore={handleEditScore}
-                        onEditField={handleEditField}
-                        onEditSchedule={handleEditSchedule}
-                      />
+                        onClick={() =>
+                          filterTeamId === t.id ? clearTeamFilter() : handleTeamClick(t.id, t.name)
+                        }
+                      >
+                        <Avatar className="w-6 h-6">
+                          {t.logo && <AvatarImage src={t.logo} />}
+                          <AvatarFallback className="text-xs">{initials(t.name)}</AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">{t.name}</span>
+                        {userTeamIds.includes(t.id) && <Badge className="text-xs h-5">Tôi</Badge>}
+                      </button>
                     ))}
                   </div>
+                </div>
+
+                {filterTeamId ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold flex items-center gap-2">
+                        <Shield className="w-5 h-5 text-primary" />
+                        Lịch thi đấu — {filterTeamName}
+                      </h3>
+                      <Button size="sm" variant="ghost" onClick={clearTeamFilter}>Xóa lọc</Button>
+                    </div>
+                    {filteredMatches.length === 0 ? (
+                      <Card>
+                        <CardContent className="py-12 text-center text-sm text-muted-foreground">
+                          Chưa có trận đấu
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {filteredMatches.map((m) => (
+                          <MatchCard
+                            key={m.id}
+                            match={m}
+                            highlightTeamId={filterTeamId}
+                            canManage={canManage}
+                            onEditScore={handleEditScore}
+                            onEditField={handleEditField}
+                            onEditSchedule={handleEditSchedule}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="py-12 text-center space-y-2">
+                      <Users className="w-10 h-10 text-muted-foreground mx-auto" />
+                      <p className="text-sm text-muted-foreground">Chọn đội ở trên để xem lịch</p>
+                    </CardContent>
+                  </Card>
                 )}
-              </div>
-            ) : (
-              <Card>
-                <CardContent className="py-12 text-center space-y-2">
-                  <Users className="w-10 h-10 text-muted-foreground mx-auto" />
-                  <p className="text-sm text-muted-foreground">Chọn đội ở trên để xem lịch</p>
-                </CardContent>
-              </Card>
+              </>
             )}
           </TabsContent>
         </Tabs>

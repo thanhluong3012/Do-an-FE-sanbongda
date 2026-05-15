@@ -280,6 +280,17 @@ export const tournamentService = {
     }
   },
 
+  // Kết thúc giải đấu
+  complete: async (id: number): Promise<Tournament> => {
+    try {
+      const response = await api.post<ApiResponse<Tournament>>(`/tournaments/${id}/complete`);
+      return response.data.data;
+    } catch (error) {
+      console.error(`Error completing tournament ${id}:`, error);
+      throw error;
+    }
+  },
+
   // Publish giải đấu (Mở đăng ký)
   publish: async (id: number): Promise<Tournament> => {
     try {

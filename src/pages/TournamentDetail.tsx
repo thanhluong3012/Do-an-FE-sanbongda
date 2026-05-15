@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
@@ -104,6 +104,7 @@ const TournamentDetail = () => {
   const [regLoading, setRegLoading] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('info');
 
   // Real-time sync từ Owner khi confirm payment
   const handleTournamentUpdate = useCallback((message: SyncMessage) => {
@@ -165,6 +166,7 @@ const TournamentDetail = () => {
   const [fieldBookings, setFieldBookings] = useState<FieldBooking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [bookingsError, setBookingsError] = useState<string | null>(null);
+  const lastFocusRefreshAtRef = useRef(0);
 
   const tournamentId = id ? parseInt(id) : 0;
 
@@ -335,7 +337,13 @@ const TournamentDetail = () => {
       if (tournamentId && tournament) {
         // Chỉ reload nếu đang chờ thanh toán
         if (tournament.payment_status === 'pending' && tournament.payment_method) {
-          loadTournament();
+          const now = Date.now();
+          if (now - lastFocusRefreshAtRef.current < 10000) {
+            return;
+          }
+
+          lastFocusRefreshAtRef.current = now;
+          loadTournament({ background: true });
         }
       }
     };
@@ -346,8 +354,13 @@ const TournamentDetail = () => {
   }, [tournamentId, tournament?.payment_status, tournament?.payment_method]);
 
   // ---- loaders ----
-  const loadTournament = async () => {
-    setIsLoading(true);
+  const loadTournament = async (options?: { background?: boolean }) => {
+    const shouldShowPageLoader = !options?.background && !tournament;
+
+    if (shouldShowPageLoader) {
+      setIsLoading(true);
+    }
+
     setTournamentError(null);
     try {
       const data = await tournamentService.getById(tournamentId);
@@ -358,8 +371,15 @@ const TournamentDetail = () => {
     } catch (err: any) {
       setTournamentError(err.response?.data?.message || 'Không thể tải thông tin giải đấu.');
     } finally {
-      setIsLoading(false);
+      if (shouldShowPageLoader) {
+        setIsLoading(false);
+      }
     }
+  };
+
+  const refreshTournament = () => loadTournament({ background: true });
+  const handleRetryTournament = () => {
+    void loadTournament();
   };
 
   const loadRegistrations = async () => {
@@ -459,7 +479,7 @@ const TournamentDetail = () => {
       await registrationService.create(data);
       toast({ title: 'Thành công', description: 'Đăng ký tham gia giải đấu thành công!' });
       await loadRegistrations();
-      await loadTournament(); // refresh để cập nhật approved_teams_count và is_full
+      await refreshTournament(); // refresh để cập nhật approved_teams_count và is_full
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Không thể đăng ký tham gia giải đấu.';
       toast({ title: 'Đăng ký thất bại', description: msg, variant: 'destructive' });
@@ -472,7 +492,7 @@ const TournamentDetail = () => {
       await registrationService.approve(registrationId);
       toast({ title: 'Thành công', description: 'Đã duyệt đăng ký. Đội sẽ nhận được thông báo.' });
       await loadRegistrations();
-      await loadTournament();
+      await refreshTournament();
     } catch (err: any) {
       toast({ title: 'Lỗi', description: err.response?.data?.message || 'Không thể duyệt đăng ký', variant: 'destructive' });
     }
@@ -482,7 +502,7 @@ const TournamentDetail = () => {
       await registrationService.reject(registrationId, { rejected_reason: reason });
       toast({ title: 'Thành công', description: 'Đã từ chối đăng ký. Đội sẽ nhận được thông báo.' });
       await loadRegistrations();
-      await loadTournament();
+      await refreshTournament();
     } catch (err: any) {
       toast({ title: 'Lỗi', description: err.response?.data?.message || 'Không thể từ chối đăng ký', variant: 'destructive' });
     }
@@ -504,7 +524,7 @@ const TournamentDetail = () => {
       });
       setCancelDialogOpen(false);
       await loadRegistrations();
-      await loadTournament();
+      await refreshTournament();
     } catch (err: any) {
       toast({ 
         title: 'Lỗi', 
@@ -598,7 +618,7 @@ const TournamentDetail = () => {
       toast({ title: 'Thành công', description: 'Đã tự động sinh lịch thi đấu!' });
       setScheduleDialogOpen(false);
       await loadBracket();
-      await loadTournament();
+      await refreshTournament();
       await loadFieldBookings(); // ← Reload sân đã book
     } catch (err: any) {
       toast({ title: 'Lỗi', description: err.response?.data?.message || 'Không thể sinh lịch thi đấu', variant: 'destructive' });
@@ -613,7 +633,7 @@ const TournamentDetail = () => {
       await tournamentService.deleteSchedule(tournamentId);
       toast({ title: 'Thành công', description: 'Đã xóa lịch thi đấu' });
       await loadBracket();
-      await loadTournament();
+      await refreshTournament();
     } catch (err: any) {
       toast({ title: 'Lỗi', description: err.response?.data?.message || 'Không thể xóa lịch thi đấu', variant: 'destructive' });
     } finally {
@@ -731,7 +751,7 @@ const TournamentDetail = () => {
                 </>
               ) : (
                 <>
-                  <Button onClick={loadTournament} variant="default">Thử lại</Button>
+                  <Button onClick={handleRetryTournament} variant="default">Thử lại</Button>
                   <Button onClick={() => navigate('/tournaments')} variant="outline">
                     Quay lại danh sách
                   </Button>
@@ -908,7 +928,7 @@ const TournamentDetail = () => {
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="info" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="info" className="gap-1.5">
               <Info className="w-4 h-4" /><span className="hidden sm:inline">Thông tin</span>
@@ -1297,7 +1317,7 @@ const TournamentDetail = () => {
               <Label htmlFor="days-between">Ngày giữa các vòng</Label>
               <Input
                 id="days-between"
-                type="number"
+                type="text"
                 min="1"
                 max="30"
                 value={scheduleDaysBetweenRounds}
@@ -1311,7 +1331,7 @@ const TournamentDetail = () => {
                 <Label htmlFor="match-duration">Thời gian trận (phút)</Label>
                 <Input
                   id="match-duration"
-                  type="number"
+                  type="text"
                   min="30"
                   max="180"
                   value={scheduleMatchDuration}
@@ -1324,7 +1344,7 @@ const TournamentDetail = () => {
                 <Label htmlFor="preparation-time">Thời gian chuẩn bị (phút)</Label>
                 <Input
                   id="preparation-time"
-                  type="number"
+                  type="text"
                   min="0"
                   max="60"
                   value={schedulePreparationTime}
