@@ -57,10 +57,10 @@ export default function OwnerPaymentConfirmation() {
       const data = await tournamentService.getAll();
       console.log('🏟️ [Owner] All tournaments:', data);
       // Filter tournaments that need payment confirmation (payment_status = pending)
-      // Bao gồm cả cash và transfer
+      // Bao gồm cả cash và vietqr
       const pendingPayments = data.filter(t => 
         t.payment_status === 'pending' && 
-        (t.payment_method === 'transfer' || t.payment_method === 'cash')
+        (t.payment_method === 'vietqr' || t.payment_method === 'cash')
       );
       console.log('⏳ [Owner] Pending payment tournaments:', pendingPayments);
       setTournaments(pendingPayments);
@@ -221,7 +221,7 @@ export default function OwnerPaymentConfirmation() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-3">
-                    {tournament.payment_method === 'transfer' && (
+                    {tournament.payment_method === 'vietqr' && (
                       <Button
                         variant="outline"
                         size="sm"

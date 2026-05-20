@@ -12,7 +12,7 @@ export interface Booking {
   end_time: string;
   total_price: number;
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
-  payment_method?: 'transfer' | 'cash';
+  payment_method?: 'transfer' | 'cash' | 'vietqr';
   payment_status?: 'pending' | 'paid' | 'refunded';
   payment_proof_url?: string;
   booking_type?: 'regular' | 'tournament';
@@ -65,7 +65,7 @@ export interface BookingDetail {
   payment: {
     total_price: number;
     total_price_formatted: string;
-    payment_method: 'transfer' | 'cash';
+    payment_method: 'transfer' | 'cash' | 'vietqr';
     payment_method_label: string;
     payment_status: string;
     payment_status_label: string;
@@ -95,7 +95,7 @@ export interface BookingRequest {
   start_time: string;
   end_time: string;
   total_price: number;
-  payment_method: 'transfer' | 'cash';
+  payment_method: 'transfer' | 'cash' | 'vietqr';
   status?: string;
   customer_name?: string;
   customer_phone?: string;
@@ -364,6 +364,50 @@ export const bookingService = {
       return bookings;
     } catch (error) {
       console.error('Error fetching owner bookings:', error);
+      return [];
+    }
+  },
+
+  // Get bookings for current staff's field cluster
+  getStaffBookings: async (bookingDate?: string, bookingType?: string): Promise<Booking[]> => {
+    try {
+      const params: Record<string, string> = {};
+
+      if (bookingDate) {
+        params.from_date = bookingDate;
+        params.to_date = bookingDate;
+      }
+
+      if (bookingType && bookingType !== 'all') {
+        params.booking_type = bookingType;
+      }
+
+      const response = await api.get('/staff/bookings', { params });
+      const payload = response.data?.data ?? response.data ?? [];
+
+      let rawData: any[] = [];
+      if (Array.isArray(payload)) {
+        rawData = payload;
+      } else if (Array.isArray(payload?.bookings)) {
+        rawData = payload.bookings;
+      } else if (Array.isArray(payload?.items)) {
+        rawData = payload.items;
+      }
+
+      return rawData.map((booking: any) => ({
+        ...booking,
+        booking_date: booking.day_book || booking.booking_date,
+        customer_name: booking.customer_name || booking.name || booking.user?.name || booking.user?.full_name,
+        customer_phone: booking.customer_phone || booking.phone || booking.user?.phone,
+        customer_email: booking.customer_email || booking.email || booking.user?.email,
+        field_name: booking.field?.name || booking.field_name,
+        field_cluster_name: booking.field?.field_cluster?.name || booking.field_cluster_name,
+        payment_method: booking.payment_method || booking.tournament?.payment_method,
+        payment_proof_url: booking.payment_proof_url || booking.tournament?.payment_proof_url,
+        tournament_name: booking.tournament_name || booking.tournament?.name,
+      }));
+    } catch (error) {
+      console.error('Error fetching staff bookings:', error);
       return [];
     }
   },

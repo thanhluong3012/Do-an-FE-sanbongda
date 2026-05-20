@@ -1,0 +1,348 @@
+/* VietQR Payment Component Styles */
+
+.vietqr-payment {
+  max-width: 600px;
+  margin: 0 auto;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Loading State */
+.vietqr-loading {
+  padding: 4rem 2rem;
+  text-align: center;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Start Screen */
+.vietqr-start {
+  padding: 1.5rem;
+}
+
+.payment-info {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 1.5rem;
+  border-radius: 8px;
+  color: white;
+}
+
+.amount-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  margin-bottom: 1rem;
+}
+
+.amount-display .label {
+  font-size: 1rem;
+  font-weight: 500;
+  opacity: 0.95;
+}
+
+.amount-display .amount {
+  font-size: 1.75rem;
+  font-weight: bold;
+  color: #ffd700;
+}
+
+.booking-info {
+  font-size: 0.9rem;
+}
+
+.booking-info p {
+  margin: 0.25rem 0;
+  opacity: 0.95;
+}
+
+.btn-create-payment {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-size: 1.1rem;
+  font-weight: 600;
+  height: 56px;
+  transition: all 0.3s ease;
+}
+
+.btn-create-payment:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
+}
+
+.payment-note {
+  background: #f9fafb;
+  padding: 1rem;
+  border-radius: 8px;
+  border-left: 4px solid #667eea;
+}
+
+.payment-note p {
+  margin: 0.25rem 0;
+  color: #4b5563;
+}
+
+/* QR Code Container */
+.vietqr-qr-container {
+  padding: 1rem;
+}
+
+.qr-wrapper {
+  margin: 0.5rem 0;
+}
+
+.qr-code-border {
+  padding: 1rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  display: inline-block;
+}
+
+.qr-code {
+  display: block;
+  border-radius: 8px;
+}
+
+/* Payment Details */
+.payment-details {
+  background: #f9fafb;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.detail-row .label {
+  font-weight: 600;
+  color: #4b5563;
+  font-size: 0.9rem;
+}
+
+.detail-row .value {
+  font-weight: 500;
+  color: #111827;
+  font-size: 0.95rem;
+  text-align: right;
+}
+
+.detail-row .value.amount {
+  color: #059669;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.value-with-copy {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* Upload Section */
+.upload-section {
+  background: #f0f9ff;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 2px dashed #3b82f6;
+}
+
+.upload-section h3 {
+  margin: 0 0 1rem 0;
+  color: #1e40af;
+  font-size: 1.1rem;
+}
+
+.file-input-wrapper {
+  position: relative;
+}
+
+.preview {
+  margin-top: 1rem;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 180px;
+  border-radius: 8px;
+  border: 2px solid #e5e7eb;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Waiting State */
+.vietqr-waiting {
+  min-height: 400px;
+}
+
+.waiting-icon {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
+}
+
+.bill-preview {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.bill-preview img {
+  margin-top: 0.5rem;
+  max-width: 300px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Success State */
+.vietqr-success {
+  min-height: 350px;
+}
+
+.success-icon {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+}
+
+.success-amount {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.success-note {
+  color: #6b7280;
+  margin-top: 1rem;
+}
+
+/* Failed State */
+.vietqr-failed {
+  min-height: 350px;
+}
+
+.failed-icon {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .vietqr-payment {
+    max-width: 100%;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .qr-code-border {
+    padding: 0.75rem;
+  }
+
+  .qr-code {
+    width: 240px !important;
+    height: 240px !important;
+  }
+
+  .amount-display .amount {
+    font-size: 1.5rem;
+  }
+
+  .detail-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .detail-row .value,
+  .value-with-copy {
+    width: 100%;
+  }
+
+  .preview-image {
+    max-height: 200px;
+  }
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.vietqr-qr-container,
+.vietqr-waiting,
+.vietqr-success,
+.vietqr-failed {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Timer & Countdown (removed for VietQR) */
+/* VietQR không cần timer vì không có expire time */
+
+/* Status Badge */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  gap: 0.25rem;
+}
+
+.status-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge.paid {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-badge.waiting {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.status-badge.failed {
+  background: #fee2e2;
+  color: #991b1b;
+}

@@ -634,9 +634,9 @@ const OwnerFields = () => {
                     <div className="flex-1">
                       <div className="flex items-center gap-3">
                         <CardTitle className="text-xl">{cluster.name}</CardTitle>
-                        <Badge variant={cluster.status === 'active' ? 'default' : 'secondary'}>
+                        {/* <Badge variant={cluster.status === 'active' ? 'default' : 'secondary'}>
                           {cluster.status === 'active' ? 'Hoạt động' : 'Không hoạt động'}
-                        </Badge>
+                        </Badge> */}
                       </div>
                       <div className="flex flex-wrap gap-4 mt-2 text-sm text-gray-600">
                         <div className="flex items-center gap-1">

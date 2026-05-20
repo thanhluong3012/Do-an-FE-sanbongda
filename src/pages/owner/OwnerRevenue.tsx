@@ -14,6 +14,36 @@ const OwnerRevenue = () => {
   const [paidBookings, setPaidBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const normalizeStats = (data: PaymentStatistics | null): PaymentStatistics | null => {
+    if (!data) return null;
+
+    return {
+      ...data,
+      total_bookings: data.total_bookings ?? 0,
+      pending_payment: data.pending_payment ?? 0,
+      pending_with_bill: data.pending_with_bill ?? 0,
+      paid: data.paid ?? 0,
+      failed: data.failed ?? 0,
+      total_revenue: data.total_revenue ?? 0,
+      pending_revenue: data.pending_revenue ?? 0,
+      by_payment_method: {
+        cash: data.by_payment_method?.cash ?? 0,
+        transfer: data.by_payment_method?.transfer ?? 0,
+      },
+      by_field: Array.isArray(data.by_field) ? data.by_field : [],
+      by_booking_type: {
+        tournament: {
+          total_bookings: data.by_booking_type?.tournament?.total_bookings ?? 0,
+          revenue: data.by_booking_type?.tournament?.revenue ?? 0,
+        },
+        regular: {
+          total_bookings: data.by_booking_type?.regular?.total_bookings ?? 0,
+          revenue: data.by_booking_type?.regular?.revenue ?? 0,
+        },
+      },
+    };
+  };
+
   const fetchRevenueData = async () => {
     setLoading(true);
     try {
@@ -21,7 +51,7 @@ const OwnerRevenue = () => {
         paymentService.getPaymentStatistics(),
         bookingService.getPaidBookingsWithDetails()
       ]);
-      setStats(statsData);
+      setStats(normalizeStats(statsData));
       setPaidBookings(bookingsData);
     } catch (error) {
       console.error('Failed to fetch revenue data:', error);
@@ -184,11 +214,11 @@ const OwnerRevenue = () => {
                 <div>
                   <p className="font-semibold text-purple-900">🏆 Giải Đấu</p>
                   <p className="text-2xl font-bold text-purple-600 mt-1">
-                    {formatCurrency(stats.by_booking_type.tournament.revenue)}
+                    {formatCurrency(stats.by_booking_type?.tournament?.revenue ?? 0)}
                   </p>
                 </div>
                 <Badge variant="secondary" className="text-lg px-3 py-1">
-                  {stats.by_booking_type.tournament.total_bookings} booking
+                  {stats.by_booking_type?.tournament?.total_bookings ?? 0} booking
                 </Badge>
               </div>
 
@@ -196,11 +226,11 @@ const OwnerRevenue = () => {
                 <div>
                   <p className="font-semibold text-blue-900">⚽ Đặt Sân Thường</p>
                   <p className="text-2xl font-bold text-blue-600 mt-1">
-                    {formatCurrency(stats.by_booking_type.regular.revenue)}
+                    {formatCurrency(stats.by_booking_type?.regular?.revenue ?? 0)}
                   </p>
                 </div>
                 <Badge variant="secondary" className="text-lg px-3 py-1">
-                  {stats.by_booking_type.regular.total_bookings} booking
+                  {stats.by_booking_type?.regular?.total_bookings ?? 0} booking
                 </Badge>
               </div>
 

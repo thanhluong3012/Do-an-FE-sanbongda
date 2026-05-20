@@ -6,11 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, User, Mail, Phone, Lock, Upload, Image as ImageIcon } from 'lucide-react';
+import { Loader2, User, Mail, Phone, Lock, Upload, Image as ImageIcon, CreditCard, AlertCircle } from 'lucide-react';
 import { ImageUpload } from '@/components/ui/image-upload';
 import { getCurrentUser, updateProfile, type UpdateProfileData } from '@/services/userService';
 import { updateOwnerProfile, getQRCode, type UpdateOwnerProfileData } from '@/services/ownerService';
+import { vietqrService, type BankInfo } from '@/services/vietqrService';
 
 export default function Profile() {
   const { user: authUser, isOwner } = useAuth();
@@ -32,13 +35,21 @@ export default function Profile() {
     business_name: '',
     code_id: '',
     address: '',
+    bank_id: '',
+    account_no: '',
+    account_name: '',
   });
 
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [banks, setBanks] = useState<BankInfo[]>([]);
+  const [loadingBanks, setLoadingBanks] = useState(false);
 
   useEffect(() => {
     loadUserProfile();
-  }, []);
+    if (authUser?.role_id === ROLES.OWNER) {
+      loadBanks();
+    }
+  }, [authUser]);
 
   const loadUserProfile = async () => {
     try {
@@ -66,6 +77,9 @@ export default function Profile() {
             business_name: userData.owner.business_name || '',
             code_id: userData.owner.code_id || '',
             address: userData.owner.address || '',
+            bank_id: userData.owner.bank_id || '',
+            account_no: userData.owner.account_no || '',
+            account_name: userData.owner.account_name || '',
           });
         } else {
           console.log('No owner data found in userData');
@@ -91,6 +105,33 @@ export default function Profile() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadBanks = async () => {
+    try {
+      setLoadingBanks(true);
+      console.log('🔍 Fetching banks from API...');
+      const response = await vietqrService.getBanks();
+      console.log('📦 Full API Response:', response);
+      console.log('📊 Response.data:', response.data);
+      console.log('✅ Is Array?', Array.isArray(response.data));
+      
+      if (response.success && response.data && Array.isArray(response.data)) {
+        console.log(`✅ Loaded ${response.data.length} banks`);
+        setBanks(response.data);
+      } else {
+        console.warn('⚠️ Banks data is not an array:', response);
+        setBanks([]);
+      }
+    } catch (error) {
+      console.error('❌ Error loading banks:', error);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+      }
+      setBanks([]);
+    } finally {
+      setLoadingBanks(false);
     }
   };
 
@@ -129,6 +170,9 @@ export default function Profile() {
         if (ownerForm.business_name) ownerData.business_name = ownerForm.business_name;
         if (ownerForm.code_id) ownerData.code_id = ownerForm.code_id;
         if (ownerForm.address) ownerData.address = ownerForm.address;
+        if (ownerForm.bank_id) ownerData.bank_id = ownerForm.bank_id;
+        if (ownerForm.account_no) ownerData.account_no = ownerForm.account_no;
+        if (ownerForm.account_name) ownerData.account_name = ownerForm.account_name;
         
         console.log('Sending owner data:', ownerData);
         // Chỉ gọi API nếu có ít nhất 1 field
@@ -336,6 +380,126 @@ export default function Profile() {
                       />
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Bank Info Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CreditCard className="w-5 h-5" />
+                    Thông Tin Tài Khoản Ngân Hàng
+                  </CardTitle>
+                  <CardDescription>
+                    Cập nhật để nhận thanh toán trực tiếp từ khách hàng qua VietQR
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Alert className="bg-blue-50 border-blue-200">
+                    <AlertCircle className="h-4 w-4 text-blue-600" />
+                    <AlertDescription className="text-sm text-blue-800">
+                      <strong>Lợi ích:</strong> Khi cập nhật thông tin ngân hàng, khách hàng sẽ thanh toán trực tiếp vào tài khoản của bạn. 
+                      Không cần qua hệ thống trung gian.
+                    </AlertDescription>
+                  </Alert>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Ngân hàng */}
+                    <div className="space-y-2">
+                      <Label htmlFor="bank_id">Ngân hàng</Label>
+                      <Select
+                        value={ownerForm.bank_id}
+                        onValueChange={(value) => setOwnerForm({ ...ownerForm, bank_id: value })}
+                      >
+                        <SelectTrigger id="bank_id">
+                          <SelectValue placeholder="-- Chọn ngân hàng --" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {loadingBanks ? (
+                            <SelectItem value="loading" disabled>
+                              <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+                              Đang tải...
+                            </SelectItem>
+                          ) : banks.length > 0 ? (
+                            banks.map((bank) => (
+                              <SelectItem key={bank.bin} value={bank.bin}>
+                                {bank.code} - {bank.shortName}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="no-banks" disabled>
+                              Không có dữ liệu ngân hàng
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Chọn ngân hàng bạn sử dụng
+                      </p>
+                    </div>
+
+                    {/* Số tài khoản */}
+                    <div className="space-y-2">
+                      <Label htmlFor="account_no">Số tài khoản</Label>
+                      <Input
+                        id="account_no"
+                        value={ownerForm.account_no}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, ''); // Chỉ giữ số
+                          setOwnerForm({ ...ownerForm, account_no: value });
+                        }}
+                        placeholder="0123456789"
+                        maxLength={20}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Chỉ nhập số, từ 6-20 ký tự
+                      </p>
+                    </div>
+
+                    {/* Tên chủ tài khoản */}
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="account_name">Tên chủ tài khoản</Label>
+                      <Input
+                        id="account_name"
+                        value={ownerForm.account_name}
+                        onChange={(e) => {
+                          // Auto convert to uppercase and remove diacritics
+                          const value = e.target.value
+                            .toUpperCase()
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .replace(/[^A-Z\s]/g, '');
+                          setOwnerForm({ ...ownerForm, account_name: value });
+                        }}
+                        placeholder="NGUYEN VAN A"
+                        maxLength={255}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        ⚠️ Viết HOA không dấu, giống trên thẻ ATM/ngân hàng (VD: NGUYEN VAN A)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Hiển thị bank đã chọn */}
+                  {ownerForm.bank_id && banks.length > 0 && (() => {
+                    const selectedBank = banks.find(b => b.bin === ownerForm.bank_id);
+                    if (selectedBank) {
+                      return (
+                        <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border">
+                          <img 
+                            src={selectedBank.logo} 
+                            alt={selectedBank.code}
+                            className="w-10 h-10 object-contain"
+                          />
+                          <div>
+                            <p className="font-semibold">{selectedBank.name}</p>
+                            <p className="text-sm text-muted-foreground">{selectedBank.shortName}</p>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </CardContent>
               </Card>
 

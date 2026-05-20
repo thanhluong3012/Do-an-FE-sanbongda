@@ -24,6 +24,8 @@ import api from '@/lib/axios';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useBookingRealtimeSync } from '@/hooks/useRealtimeSync';
+import VietQRPayment from '@/components/VietQRPayment';
+import { VietQRStatusResponse } from '@/services/vietqrService';
 
 const MyBookings = () => {
   const navigate = useNavigate();
@@ -33,13 +35,6 @@ const MyBookings = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
-  
-  // Upload payment proof states
-  const [showUploadDialog, setShowUploadDialog] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [uploadingFile, setUploadingFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fieldComplexMap, setFieldComplexMap] = useState<Record<number, any>>({});
   const [expandedTournaments, setExpandedTournaments] = useState<Set<number>>(new Set());
 
@@ -221,94 +216,6 @@ const MyBookings = () => {
     }
   };
 
-  const handleOpenUploadDialog = (booking: Booking) => {
-    setSelectedBooking(booking);
-    setUploadingFile(null);
-    setPreviewUrl(booking.payment_proof_url || null);
-    setShowUploadDialog(true);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast({
-        title: 'Lỗi',
-        description: 'Vui lòng chọn file ảnh (jpg, png, ...)',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        title: 'Lỗi',
-        description: 'Kích thước file không được vượt quá 5MB',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setUploadingFile(file);
-    
-    // Create preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreviewUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleUploadPaymentProof = async () => {
-    if (!selectedBooking || !uploadingFile) return;
-
-    try {
-      setUploading(true);
-      const result = await bookingService.uploadPaymentProof(selectedBooking.id, uploadingFile);
-
-      if (result.success) {
-        toast({
-          title: 'Thành công',
-          description: 'Đã upload chứng từ thanh toán. Vui lòng đợi chủ sân xác nhận.',
-        });
-
-        // Broadcast tới Owner để thông báo có payment proof mới
-        broadcast({
-          type: 'payment_uploaded',
-          entityId: selectedBooking.id,
-          entityType: 'booking',
-          relatedIds: {
-            fieldId: selectedBooking.field_id,
-            bookingDate: selectedBooking.booking_date,
-          },
-          data: {
-            paymentMethod: selectedBooking.payment_method,
-          },
-        });
-
-        setShowUploadDialog(false);
-        loadMyBookings(); // Reload to get updated data
-      } else {
-        toast({
-          title: 'Lỗi',
-          description: result.error || 'Không thể upload chứng từ',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      toast({
-        title: 'Lỗi',
-        description: 'Có lỗi xảy ra khi upload',
-        variant: 'destructive',
-      });
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const getPaymentStatusBadge = (paymentStatus?: string) => {
     const variants: Record<string, { label: string; className: string; icon: any }> = {
       pending: {
@@ -398,38 +305,63 @@ const MyBookings = () => {
     return bookingDateTime > new Date();
   };
 
-  // ...existing code...
-  const [showOnlinePayment, setShowOnlinePayment] = useState(false);
-  const [onlinePaymentBooking, setOnlinePaymentBooking] = useState<Booking | null>(null);
-  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
-  const [loadingPaymentInfo, setLoadingPaymentInfo] = useState(false);
-  const [showQRZoom, setShowQRZoom] = useState(false);
+  // VietQR payment states
+  const [showVietQRDialog, setShowVietQRDialog] = useState(false);
+  const [vietqrBooking, setVietqrBooking] = useState<Booking | null>(null);
 
-  const handleOpenOnlinePayment = async (booking: Booking) => {
-    setOnlinePaymentBooking(booking);
-    setShowOnlinePayment(true);
-    setLoadingPaymentInfo(true);
+  // VietQR handlers
+  const handleOpenVietQRPayment = (booking: Booking) => {
+    setVietqrBooking(booking);
+    setShowVietQRDialog(true);
+  };
+
+  const handleVietQRSuccess = (data: VietQRStatusResponse['data']) => {
+    console.log('VietQR payment success:', data);
     
-    try {
-      const result = await bookingService.getPaymentInfo(booking.id);
-      if (result.success && result.data) {
-        setPaymentInfo(result.data);
-      } else {
-        toast({
-          title: 'Lỗi',
-          description: result.error || 'Không thể tải thông tin thanh toán',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      toast({
-        title: 'Lỗi',
-        description: 'Có lỗi xảy ra khi tải thông tin thanh toán',
-        variant: 'destructive',
+    toast({
+      title: 'Thanh toán thành công!',
+      description: `Booking #${data.booking_id} đã được thanh toán.`,
+    });
+
+    // Broadcast realtime update
+    if (vietqrBooking) {
+      broadcast({
+        type: 'payment_confirmed',
+        entityId: vietqrBooking.id,
+        entityType: 'booking',
+        relatedIds: {
+          fieldId: vietqrBooking.field_id,
+          bookingDate: vietqrBooking.booking_date,
+        },
+        data: {
+          paymentMethod: 'vietqr',
+          paymentStatus: 'paid',
+        },
       });
-    } finally {
-      setLoadingPaymentInfo(false);
     }
+
+    setShowVietQRDialog(false);
+    setVietqrBooking(null);
+    
+    // Reload bookings to get updated payment status
+    setTimeout(() => {
+      loadMyBookings();
+    }, 1000);
+  };
+
+  const handleVietQRError = (error: string) => {
+    console.error('VietQR payment error:', error);
+    
+    toast({
+      title: 'Lỗi thanh toán',
+      description: error,
+      variant: 'destructive',
+    });
+  };
+
+  const handleVietQRCancel = () => {
+    setShowVietQRDialog(false);
+    setVietqrBooking(null);
   };
 
   const renderBookingCard = (booking: Booking) => {
@@ -499,22 +431,24 @@ const MyBookings = () => {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Phương thức thanh toán:</span>
                 <Badge variant="outline" className="font-semibold text-primary">
-                  {booking.payment_method === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
+                  {booking.payment_method === 'cash' && '💵 Tiền mặt'}
+                  {booking.payment_method === 'vietqr' && '💳 VietQR'}
                 </Badge>
               </div>
 
-              {/* Ghi chú cho cả hai phương thức */}
+              {/* Ghi chú cho các phương thức */}
               <Alert className="bg-blue-50 border-blue-200">
                 <AlertCircle className="h-4 w-4 text-blue-600" />
                 <AlertDescription className="text-sm text-blue-800">
-                  {booking.payment_method === 'transfer' 
-                    ? 'Khách hàng có thể thanh toán trực tuyến tại đây hoặc đến thanh toán trực tiếp tại sân.'
-                    : 'Khách hàng có thể đến thanh toán trực tiếp tại sân, dù chọn tiền mặt hay chuyển khoản.'
-                  }
+                  {booking.payment_method === 'cash' && 
+                    'Khách hàng có thể đến thanh toán trực tiếp tại sân.'}
+                  {booking.payment_method === 'vietqr' && 
+                    'Thanh toán nhanh chóng và an toàn qua VietQR bằng cách quét mã QR.'}
                 </AlertDescription>
               </Alert>
 
-              {booking.payment_method === 'transfer' && (
+              {/* VietQR Payment Section */}
+              {booking.payment_method === 'vietqr' && (
                 <>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Trạng thái:</span>
@@ -522,32 +456,20 @@ const MyBookings = () => {
                       variant={booking.payment_status === 'paid' ? 'default' : 'secondary'}
                       className={booking.payment_status === 'paid' ? 'bg-green-100 text-green-800' : ''}
                     >
-                      {booking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ xác nhận'}
+                      {booking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ thanh toán'}
                     </Badge>
                   </div>
 
-                  {booking.payment_proof_url && (
-                    <Alert className={booking.payment_status === 'paid' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}>
-                      <CheckCircle2 className={booking.payment_status === 'paid' ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-blue-600'} />
-                      <AlertDescription className={booking.payment_status === 'paid' ? 'text-sm text-green-800' : 'text-sm text-blue-800'}>
-                        {booking.payment_status === 'paid' 
-                          ? 'Đã được chủ sân xác nhận thanh toán.'
-                          : 'Đã upload chứng từ. Đang chờ chủ sân xác nhận.'
-                        }
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {/* Nút thanh toán trực tuyến - chỉ hiện khi booking đã confirmed */}
+                  {/* Nút thanh toán VietQR - chỉ hiện khi booking đã confirmed */}
                   {booking.status === 'confirmed' && (!booking.payment_status || booking.payment_status !== 'paid') && (
                     <Button
                       variant="default"
                       size="sm"
-                      className="w-full"
-                      onClick={() => handleOpenOnlinePayment(booking)}
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                      onClick={() => handleOpenVietQRPayment(booking)}
                     >
                       <DollarSign className="w-4 h-4 mr-2" />
-                      Thanh toán trực tuyến
+                      Thanh toán VietQR
                     </Button>
                   )}
                   
@@ -556,7 +478,17 @@ const MyBookings = () => {
                     <Alert className="bg-yellow-50 border-yellow-200">
                       <AlertCircle className="h-4 w-4 text-yellow-600" />
                       <AlertDescription className="text-sm text-yellow-800">
-                        Booking đang chờ chủ sân xác nhận. Bạn có thể thanh toán sau khi được xác nhận.
+                        Booking đang chờ chủ sân xác nhận. Bạn có thể thanh toán VietQR sau khi được xác nhận.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Hiển thị thông báo đã thanh toán */}
+                  {booking.payment_status === 'paid' && (
+                    <Alert className="bg-green-50 border-green-200">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <AlertDescription className="text-sm text-green-800">
+                        Đã thanh toán thành công qua VietQR.
                       </AlertDescription>
                     </Alert>
                   )}
@@ -728,22 +660,24 @@ const MyBookings = () => {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Phương thức thanh toán:</span>
                 <Badge variant="outline" className="font-semibold text-primary">
-                  {firstBooking.payment_method === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
+                  {firstBooking.payment_method === 'cash' && '💵 Tiền mặt'}
+                  {firstBooking.payment_method === 'vietqr' && '💳 VietQR'}
                 </Badge>
               </div>
 
-              {/* Ghi chú cho cả hai phương thức */}
+              {/* Ghi chú cho các phương thức */}
               <Alert className="bg-blue-50 border-blue-200">
                 <AlertCircle className="h-4 w-4 text-blue-600" />
                 <AlertDescription className="text-sm text-blue-800">
-                  {firstBooking.payment_method === 'transfer' 
-                    ? 'Khách hàng có thể thanh toán trực tuyến tại đây hoặc đến thanh toán trực tiếp tại sân.'
-                    : 'Khách hàng có thể đến thanh toán trực tiếp tại sân, dù chọn tiền mặt hay chuyển khoản.'
-                  }
+                  {firstBooking.payment_method === 'cash' && 
+                    'Khách hàng có thể đến thanh toán trực tiếp tại sân.'}
+                  {firstBooking.payment_method === 'vietqr' && 
+                    'Thanh toán nhanh chóng và an toàn qua VietQR bằng cách quét mã QR.'}
                 </AlertDescription>
               </Alert>
 
-              {firstBooking.payment_method === 'transfer' && (
+              {/* VietQR Payment Section */}
+              {firstBooking.payment_method === 'vietqr' && (
                 <>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Trạng thái:</span>
@@ -751,32 +685,20 @@ const MyBookings = () => {
                       variant={firstBooking.payment_status === 'paid' ? 'default' : 'secondary'}
                       className={firstBooking.payment_status === 'paid' ? 'bg-green-100 text-green-800' : ''}
                     >
-                      {firstBooking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ xác nhận'}
+                      {firstBooking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ thanh toán'}
                     </Badge>
                   </div>
 
-                  {firstBooking.payment_proof_url && (
-                    <Alert className={firstBooking.payment_status === 'paid' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}>
-                      <CheckCircle2 className={firstBooking.payment_status === 'paid' ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-blue-600'} />
-                      <AlertDescription className={firstBooking.payment_status === 'paid' ? 'text-sm text-green-800' : 'text-sm text-blue-800'}>
-                        {firstBooking.payment_status === 'paid' 
-                          ? 'Đã được chủ sân xác nhận thanh toán.'
-                          : 'Đã upload chứng từ. Đang chờ chủ sân xác nhận.'
-                        }
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {/* Nút thanh toán trực tuyến - chỉ hiện khi booking đã confirmed */}
+                  {/* Nút thanh toán VietQR - chỉ hiện khi booking đã confirmed */}
                   {firstBooking.status === 'confirmed' && (!firstBooking.payment_status || firstBooking.payment_status !== 'paid') && (
                     <Button
                       variant="default"
                       size="sm"
-                      className="w-full"
-                      onClick={() => handleOpenOnlinePayment(firstBooking)}
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                      onClick={() => handleOpenVietQRPayment(firstBooking)}
                     >
                       <DollarSign className="w-4 h-4 mr-2" />
-                      Thanh toán trực tuyến
+                      Thanh toán VietQR
                     </Button>
                   )}
                   
@@ -785,7 +707,17 @@ const MyBookings = () => {
                     <Alert className="bg-yellow-50 border-yellow-200">
                       <AlertCircle className="h-4 w-4 text-yellow-600" />
                       <AlertDescription className="text-sm text-yellow-800">
-                        Booking đang chờ chủ sân xác nhận. Bạn có thể thanh toán sau khi được xác nhận.
+                        Booking đang chờ chủ sân xác nhận. Bạn có thể thanh toán VietQR sau khi được xác nhận.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Hiển thị thông báo đã thanh toán */}
+                  {firstBooking.payment_status === 'paid' && (
+                    <Alert className="bg-green-50 border-green-200">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <AlertDescription className="text-sm text-green-800">
+                        Đã thanh toán thành công qua VietQR.
                       </AlertDescription>
                     </Alert>
                   )}
@@ -1078,258 +1010,34 @@ const MyBookings = () => {
       </main>
       <Footer />
 
-      {/* Upload Payment Proof Dialog */}
-      <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Upload className="w-5 h-5 text-primary" />
-              Upload chứng từ thanh toán
-            </DialogTitle>
-            <DialogDescription>
-              Upload ảnh chụp bill/ảnh chuyển khoản để chủ sân xác nhận thanh toán
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {selectedBooking && (
-              <Alert>
-                <AlertDescription className="text-sm">
-                  <strong>Booking #{selectedBooking.id}</strong>
-                  <br />
-                  Số tiền: <strong className="text-primary">{formatCurrency(selectedBooking.total_price)}</strong>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="payment-proof">Chọn ảnh chứng từ</Label>
-              <Input
-                id="payment-proof"
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                disabled={uploading}
-              />
-              <p className="text-xs text-muted-foreground">
-                Chấp nhận file: JPG, PNG, JPEG. Tối đa 5MB
-              </p>
-            </div>
-
-            {/* Preview */}
-            {previewUrl && (
-              <div className="space-y-2">
-                <Label>Xem trước:</Label>
-                <div className="border rounded-lg p-2 bg-muted/30">
-                  <img 
-                    src={previewUrl} 
-                    alt="Preview" 
-                    className="max-h-64 w-full object-contain rounded"
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowUploadDialog(false)}
-                disabled={uploading}
-                className="flex-1"
-              >
-                Hủy
-              </Button>
-              <Button
-                onClick={handleUploadPaymentProof}
-                disabled={!uploadingFile || uploading}
-                className="flex-1"
-              >
-                {uploading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Đang upload...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload
-                  </>
-                )}
-              </Button>
-            </div>
-
-            <Alert className="bg-yellow-50 border-yellow-200">
-              <AlertCircle className="h-4 w-4 text-yellow-600" />
-              <AlertDescription className="text-xs text-yellow-800">
-                <strong>Lưu ý:</strong> Sau khi upload, chủ sân sẽ kiểm tra và xác nhận thanh toán. 
-                Bạn sẽ nhận được thông báo khi booking được xác nhận.
-              </AlertDescription>
-            </Alert>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Online Payment Modal */}
-      <Dialog open={showOnlinePayment} onOpenChange={setShowOnlinePayment}>
+      {/* VietQR Payment Dialog */}
+      <Dialog open={showVietQRDialog} onOpenChange={setShowVietQRDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-primary" />
-              Thanh toán trực tuyến
+              Thanh toán VietQR
             </DialogTitle>
             <DialogDescription>
-              Chuyển khoản qua QR code bên dưới và upload chứng từ thanh toán.
+              Quét mã QR bằng ứng dụng Banking để thanh toán
             </DialogDescription>
           </DialogHeader>
-          
-          {loadingPaymentInfo ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {onlinePaymentBooking && (
-                <Alert>
-                  <AlertDescription className="text-sm">
-                    <strong>Booking #{onlinePaymentBooking.id}</strong>
-                    <br />
-                    Số tiền: <strong className="text-primary">{formatCurrency(onlinePaymentBooking.total_price)}</strong>
-                  </AlertDescription>
-                </Alert>
-              )}
-              
-              {/* QR code */}
-              {paymentInfo?.qr_code_url ? (
-                <div className="flex flex-col items-center gap-2">
-                  <Label>Quét mã QR để chuyển khoản</Label>
-                  <div 
-                    className="border rounded-lg p-2 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => setShowQRZoom(true)}
-                    title="Click để phóng to"
-                  >
-                    <img 
-                      src={paymentInfo.qr_code_url} 
-                      alt="QR Code" 
-                      className="w-64 h-64 object-contain"
-                    />
-                  </div>
-                  <p className="text-xs text-blue-600 font-medium">Click vào QR để phóng to</p>
-                  {paymentInfo.transfer_note && (
-                    <p className="text-xs text-muted-foreground">
-                      Nội dung chuyển khoản: <span className="font-semibold">{paymentInfo.transfer_note}</span>
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <Label>Quét mã QR để chuyển khoản</Label>
-                  <div className="border rounded-lg p-2 bg-muted/30 flex items-center justify-center">
-                    <ImageIcon className="w-32 h-32 text-muted-foreground" />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Nội dung chuyển khoản: <span className="font-semibold">BOOKING{onlinePaymentBooking?.id}</span>
-                  </p>
-                </div>
-              )}
-              
-              {/* Instruction */}
-              {paymentInfo?.instruction && (
-                <Alert className="bg-blue-50 border-blue-200">
-                  <AlertCircle className="h-4 w-4 text-blue-600" />
-                  <AlertDescription className="text-xs text-blue-800">
-                    {paymentInfo.instruction}
-                  </AlertDescription>
-                </Alert>
-              )}
-              
-              {/* Owner contact info */}
-              {paymentInfo?.owner_contact && (
-                <div className="space-y-2 pt-2 border-t">
-                  <p className="text-sm font-semibold text-gray-700">Thông tin chủ sân</p>
-                  {paymentInfo.owner_contact.name && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Building2 className="w-3 h-3 text-muted-foreground" />
-                      <span className="font-medium">{paymentInfo.owner_contact.name}</span>
-                    </div>
-                  )}
-                  {paymentInfo.owner_contact.phone && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Phone className="w-3 h-3 text-muted-foreground" />
-                      <a
-                        href={`tel:${paymentInfo.owner_contact.phone}`}
-                        className="text-blue-600 hover:underline"
-                      >
-                        {paymentInfo.owner_contact.phone}
-                      </a>
-                    </div>
-                  )}
-                  {paymentInfo.owner_contact.address && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <MapPin className="w-3 h-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">{paymentInfo.owner_contact.address}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* Upload button */}
-              <Alert className="bg-yellow-50 border-yellow-200">
-                <AlertCircle className="h-4 w-4 text-yellow-600" />
-                <AlertDescription className="text-xs text-yellow-800">
-                  Sau khi chuyển khoản, vui lòng upload ảnh chứng từ để chủ sân xác nhận thanh toán.
-                </AlertDescription>
-              </Alert>
-              <Button
-                className="w-full"
-                onClick={() => {
-                  setShowOnlinePayment(false);
-                  if (onlinePaymentBooking) handleOpenUploadDialog(onlinePaymentBooking);
-                }}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Upload chứng từ thanh toán
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
-      {/* QR Code Zoom Modal */}
-      <Dialog open={showQRZoom} onOpenChange={setShowQRZoom}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Mã QR thanh toán</DialogTitle>
-            <DialogDescription>
-              Quét mã QR này để chuyển khoản
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-4 p-4">
-            {paymentInfo?.qr_code_url && (
-              <img 
-                src={paymentInfo.qr_code_url} 
-                alt="QR Code" 
-                className="w-full max-w-lg h-auto object-contain"
-              />
-            )}
-            {paymentInfo?.transfer_note && (
-              <Alert>
-                <AlertDescription className="text-center">
-                  <strong>Nội dung chuyển khoản:</strong>
-                  <br />
-                  <span className="text-lg font-bold text-primary">{paymentInfo.transfer_note}</span>
-                </AlertDescription>
-              </Alert>
-            )}
-            {onlinePaymentBooking && (
-              <Alert>
-                <AlertDescription className="text-center">
-                  <strong>Số tiền:</strong>
-                  <br />
-                  <span className="text-xl font-bold text-primary">{formatCurrency(onlinePaymentBooking.total_price)}</span>
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
+          {vietqrBooking && (
+            <VietQRPayment
+              bookingId={vietqrBooking.id}
+              tournamentId={vietqrBooking.booking_type === 'tournament' ? vietqrBooking.tournament_id : undefined}
+              amount={vietqrBooking.total_price}
+              bookingInfo={{
+                fieldName: vietqrBooking.field_name,
+                date: format(new Date(vietqrBooking.booking_date), 'dd/MM/yyyy', { locale: vi }),
+                time: `${vietqrBooking.start_time?.substring(0, 5)} - ${vietqrBooking.end_time?.substring(0, 5)}`,
+              }}
+              onSuccess={handleVietQRSuccess}
+              onError={handleVietQRError}
+              onCancel={handleVietQRCancel}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -1087,7 +1087,7 @@ const TournamentDetail = () => {
                               <div className="flex justify-between items-center pt-4 border-t border-slate-100 mb-4 text-xs font-bold">
                                 <span className="text-slate-400 uppercase tracking-wider">Thanh toán</span>
                                 <Badge variant="outline" className="border-slate-200 text-slate-600 rounded-full font-bold px-3 py-0.5">
-                                  {booking.payment_method === 'transfer' ? 'Chuyển khoản' : 'Tiền mặt'}
+                                  {booking.payment_method === 'vietqr' ? 'Chuyển khoản' : 'Tiền mặt'}
                                 </Badge>
                               </div>
 
@@ -1285,7 +1285,7 @@ const TournamentDetail = () => {
                   <Label htmlFor="num-groups">Số bảng (groups)</Label>
                   <Input
                     id="num-groups"
-                    type="number"
+                    type="text"
                     min="2"
                     max="8"
                     value={scheduleNumGroups}
@@ -1298,7 +1298,7 @@ const TournamentDetail = () => {
                   <Label htmlFor="teams-per-group">Số đội mỗi bảng</Label>
                   <Input
                     id="teams-per-group"
-                    type="number"
+                    type="text"
                     min="2"
                     max="16"
                     value={scheduleTeamsPerGroup}
@@ -1321,7 +1321,7 @@ const TournamentDetail = () => {
                 min="1"
                 max="30"
                 value={scheduleDaysBetweenRounds}
-                onChange={(e) => setScheduleDaysBetweenRounds(Math.max(1, Math.min(30, parseInt(e.target.value) || 3)))}
+                onChange={(e) => setScheduleDaysBetweenRounds(Math.max(1, Math.min(30, parseInt(e.target.value) || 1)))}
               />
               <p className="text-xs text-muted-foreground">Số ngày cách nhau giữa các vòng đấu</p>
             </div>

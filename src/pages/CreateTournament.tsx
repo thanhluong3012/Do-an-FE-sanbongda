@@ -92,7 +92,7 @@ export default function CreateTournament() {
   });
 
   // Payment states
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'vietqr'>('cash');
   const [totalPrice, setTotalPrice] = useState(0);
   const [sessionPrices, setSessionPrices] = useState<TournamentSessionPrice[]>([]);
 
@@ -1377,12 +1377,12 @@ export default function CreateTournament() {
               </div>
             </div>
 
-            {/* Transfer Payment */}
+            {/* VietQR Payment */}
             <div
-              onClick={() => setPaymentMethod('transfer')}
+              onClick={() => setPaymentMethod('vietqr')}
               className={cn(
                 "border-2 rounded-lg p-4 cursor-pointer transition-all",
-                paymentMethod === 'transfer'
+                paymentMethod === 'vietqr'
                   ? "border-primary bg-primary/5"
                   : "border-gray-200 hover:border-primary/50"
               )}
@@ -1391,9 +1391,9 @@ export default function CreateTournament() {
                 <div className="mt-1">
                   <div className={cn(
                     "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                    paymentMethod === 'transfer' ? "border-primary" : "border-gray-300"
+                    paymentMethod === 'vietqr' ? "border-primary" : "border-gray-300"
                   )}>
-                    {paymentMethod === 'transfer' && (
+                    {paymentMethod === 'vietqr' && (
                       <div className="w-3 h-3 rounded-full bg-primary"></div>
                     )}
                   </div>
@@ -1401,10 +1401,10 @@ export default function CreateTournament() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <CreditCard className="w-5 h-5 text-primary" />
-                    <span className="font-semibold">Chuyển khoản</span>
+                    <span className="font-semibold">VietQR</span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Thanh toán online sau khi chủ sân xác nhận
+                    Quét mã QR để thanh toán nhanh và an toàn
                   </p>
                 </div>
               </div>
@@ -1432,11 +1432,11 @@ export default function CreateTournament() {
           </AlertDescription>
         </Alert>
 
-        {paymentMethod === 'transfer' && (
+        {paymentMethod === 'vietqr' && (
           <Alert className="bg-green-50 border-green-300">
             <Info className="h-4 w-4 text-green-600" />
             <AlertDescription className="text-green-900 text-sm">
-              <strong>💡 Lưu ý:</strong> Bạn sẽ thanh toán online trong trang chi tiết giải sau khi chủ sân xác nhận đặt sân. Hệ thống sẽ hiển thị QR code thanh toán và cho phép bạn upload bill.
+              <strong>💡 Lưu ý:</strong> Bạn sẽ thanh toán qua VietQR trong trang chi tiết giải sau khi chủ sân xác nhận đặt sân. Hệ thống sẽ hiển thị mã QR để quét thanh toán.
             </AlertDescription>
           </Alert>
         )}

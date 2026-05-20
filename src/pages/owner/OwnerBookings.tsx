@@ -281,11 +281,13 @@ const OwnerBookings = () => {
       );
     }
 
-    if (paymentMethod === 'transfer' || paymentMethod === 'banking') {
+    if (paymentMethod === 'vietqr') {
       return (
         <Badge variant="outline" className="gap-1 border-blue-300 text-blue-700 bg-blue-50">
-          <Clock className="w-3 h-3" />
-          Chuyển khoản
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/>
+          </svg>
+          VietQR
         </Badge>
       );
     }

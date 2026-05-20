@@ -61,6 +61,10 @@ export interface UpdateOwnerProfileData {
   address?: string;
   code_id?: string;
   qr_code_image?: string; // QR code URL from Supabase Storage
+  // Bank info for VietQR
+  bank_id?: string;      // 6 số BIN code
+  account_no?: string;   // Số tài khoản (6-20 số)
+  account_name?: string; // Tên chủ TK (CHỮ HOA không dấu)
 }
 
 // Owner tự cập nhật profile của mình

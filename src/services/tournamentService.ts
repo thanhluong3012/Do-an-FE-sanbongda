@@ -61,7 +61,7 @@ export interface Tournament {
   participation_type?: 'organizer' | 'participant' | 'both'; // Loại tham gia: tổ chức, tham gia, hoặc cả hai
   
   // Payment fields
-  payment_method?: 'cash' | 'transfer';
+  payment_method?: 'cash' | 'vietqr';
   payment_status?: 'pending' | 'paid' | 'rejected' | 'failed';
   payment_proof?: string;
   payment_proof_url?: string; // alias – some responses use this
@@ -124,7 +124,7 @@ export interface FieldBooking {
   end_time: string;
   total_price?: number;
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
-  payment_method?: 'transfer' | 'cash';
+  payment_method?: 'vietqr' | 'cash';
   payment_status?: 'pending' | 'paid' | 'refunded';
   payment_proof_url?: string;
   customer_name?: string;
@@ -169,7 +169,7 @@ export interface TournamentRequest {
   end_date: string;
   field_cluster_id: number;
   field_type?: string; // Loại sân (5v5, 7v7, 11v11) - optional để backward compatible
-  payment_method?: 'cash' | 'transfer'; // Phương thức thanh toán
+  payment_method?: 'cash' | 'vietqr'; // Phương thức thanh toán
   payment_proof?: string; // URL bill chuyển khoản từ Supabase (field name BE dùng)
   bookings?: Array<{ // Danh sách sân cần book
     field_id: number;

@@ -73,7 +73,7 @@ const FieldComplexDetail = () => {
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookedTimeSlots, setBookedTimeSlots] = useState<Set<string>>(new Set());
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'transfer' | 'cash'>('transfer');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'vietqr' | 'cash'>('vietqr');
   
   // Error handling states
   const [showMissingPriceDialog, setShowMissingPriceDialog] = useState(false);
@@ -1304,9 +1304,9 @@ const FieldComplexDetail = () => {
 
                           <button
                             type="button"
-                            onClick={() => setSelectedPaymentMethod('transfer')}
+                            onClick={() => setSelectedPaymentMethod('vietqr')}
                             className={`w-full text-left border-2 rounded-lg p-4 transition-all ${
-                              selectedPaymentMethod === 'transfer'
+                              selectedPaymentMethod === 'vietqr'
                                 ? 'border-primary bg-primary/5'
                                 : 'border-gray-200 dark:border-gray-700 hover:border-primary/50'
                             }`}
@@ -1315,10 +1315,10 @@ const FieldComplexDetail = () => {
                               <div className="mt-1">
                                 <div
                                   className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                                    selectedPaymentMethod === 'transfer' ? 'border-primary' : 'border-gray-300 dark:border-gray-600'
+                                    selectedPaymentMethod === 'vietqr' ? 'border-primary' : 'border-gray-300 dark:border-gray-600'
                                   }`}
                                 >
-                                  {selectedPaymentMethod === 'transfer' && (
+                                  {selectedPaymentMethod === 'vietqr' && (
                                     <div className="w-3 h-3 rounded-full bg-primary"></div>
                                   )}
                                 </div>
@@ -1326,10 +1326,10 @@ const FieldComplexDetail = () => {
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
                                   <DollarSign className="w-5 h-5 text-primary" />
-                                  <span className="font-semibold">Chuyển khoản</span>
+                                  <span className="font-semibold">VietQR</span>
                                 </div>
                                 <p className="text-sm text-muted-foreground">
-                                  Chuyển khoản qua ngân hàng trước khi xác nhận
+                                  Quét mã QR để thanh toán nhanh và an toàn
                                 </p>
                               </div>
                             </div>
@@ -1358,7 +1358,7 @@ const FieldComplexDetail = () => {
                           <div className="flex justify-between items-center p-2 bg-white/50 dark:bg-black/20 rounded-lg">
                             <span className="text-muted-foreground">Thanh toán:</span>
                             <span className="font-semibold">
-                              {selectedPaymentMethod === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
+                              {selectedPaymentMethod === 'vietqr' ? '💳 VietQR' : '💵 Tiền mặt'}
                             </span>
                           </div>
                         </div>
