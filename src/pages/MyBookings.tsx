@@ -308,25 +308,33 @@ const MyBookings = () => {
   // VietQR payment states
   const [showVietQRDialog, setShowVietQRDialog] = useState(false);
   const [vietqrBooking, setVietqrBooking] = useState<Booking | null>(null);
+  const [vietqrTournamentTotalPrice, setVietqrTournamentTotalPrice] = useState<number | null>(null);
 
   // VietQR handlers
-  const handleOpenVietQRPayment = (booking: Booking) => {
+  const handleOpenVietQRPayment = (booking: Booking, totalAmount?: number) => {
     setVietqrBooking(booking);
+    setVietqrTournamentTotalPrice(totalAmount || null);
     setShowVietQRDialog(true);
   };
 
   const handleVietQRSuccess = (data: VietQRStatusResponse['data']) => {
     console.log('VietQR payment success:', data);
     
+    // Kiểm tra nếu payment_status === 'paid' → thực sự đã thanh toán
+    // Ngược lại → chỉ upload bill thành công
+    const isPaid = data.payment_status === 'paid';
+    
     toast({
-      title: 'Thanh toán thành công!',
-      description: `Booking #${data.booking_id} đã được thanh toán.`,
+      title: isPaid ? 'Thanh toán thành công!' : 'Upload bill thành công!',
+      description: isPaid 
+        ? `Booking #${data.booking_id} đã được thanh toán.`
+        : 'Đã upload bill thanh toán. Vui lòng chờ chủ sân xác nhận.',
     });
 
     // Broadcast realtime update
     if (vietqrBooking) {
       broadcast({
-        type: 'payment_confirmed',
+        type: isPaid ? 'payment_confirmed' : 'payment_uploaded',
         entityId: vietqrBooking.id,
         entityType: 'booking',
         relatedIds: {
@@ -335,7 +343,7 @@ const MyBookings = () => {
         },
         data: {
           paymentMethod: 'vietqr',
-          paymentStatus: 'paid',
+          paymentStatus: isPaid ? 'paid' : 'pending',
         },
       });
     }
@@ -362,6 +370,7 @@ const MyBookings = () => {
   const handleVietQRCancel = () => {
     setShowVietQRDialog(false);
     setVietqrBooking(null);
+    setVietqrTournamentTotalPrice(null);
   };
 
   const renderBookingCard = (booking: Booking) => {
@@ -459,6 +468,16 @@ const MyBookings = () => {
                       {booking.payment_status === 'paid' ? '✓ Đã thanh toán' : '⏳ Chờ thanh toán'}
                     </Badge>
                   </div>
+
+                  {/* Thông báo đã upload bill, chờ xác nhận */}
+                  {booking.payment_proof_url && booking.payment_status !== 'paid' && (
+                    <Alert className="bg-blue-50 border-blue-200">
+                      <ImageIcon className="h-4 w-4 text-blue-600" />
+                      <AlertDescription className="text-sm text-blue-800">
+                        ✓ Đã upload bill thanh toán. Đang chờ chủ sân xác nhận.
+                      </AlertDescription>
+                    </Alert>
+                  )}
 
                   {/* Nút thanh toán VietQR - chỉ hiện khi booking đã confirmed */}
                   {booking.status === 'confirmed' && (!booking.payment_status || booking.payment_status !== 'paid') && (
@@ -689,13 +708,23 @@ const MyBookings = () => {
                     </Badge>
                   </div>
 
+                  {/* Thông báo đã upload bill, chờ xác nhận */}
+                  {firstBooking.payment_proof_url && firstBooking.payment_status !== 'paid' && (
+                    <Alert className="bg-blue-50 border-blue-200">
+                      <ImageIcon className="h-4 w-4 text-blue-600" />
+                      <AlertDescription className="text-sm text-blue-800">
+                        ✓ Đã upload bill thanh toán. Đang chờ chủ sân xác nhận.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                   {/* Nút thanh toán VietQR - chỉ hiện khi booking đã confirmed */}
                   {firstBooking.status === 'confirmed' && (!firstBooking.payment_status || firstBooking.payment_status !== 'paid') && (
                     <Button
                       variant="default"
                       size="sm"
                       className="w-full bg-blue-600 hover:bg-blue-700"
-                      onClick={() => handleOpenVietQRPayment(firstBooking)}
+                      onClick={() => handleOpenVietQRPayment(firstBooking, totalPrice)}
                     >
                       <DollarSign className="w-4 h-4 mr-2" />
                       Thanh toán VietQR
@@ -1027,7 +1056,7 @@ const MyBookings = () => {
             <VietQRPayment
               bookingId={vietqrBooking.id}
               tournamentId={vietqrBooking.booking_type === 'tournament' ? vietqrBooking.tournament_id : undefined}
-              amount={vietqrBooking.total_price}
+              amount={vietqrTournamentTotalPrice || vietqrBooking.total_price}
               bookingInfo={{
                 fieldName: vietqrBooking.field_name,
                 date: format(new Date(vietqrBooking.booking_date), 'dd/MM/yyyy', { locale: vi }),

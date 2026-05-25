@@ -186,13 +186,23 @@ const VietQRPayment: React.FC<VietQRPaymentProps> = ({
       setUploading(true);
       setError('');
 
+      console.log('🔵 [VietQR] Uploading file to Supabase Storage...');
+      
       // Upload to storage
       const billUrl = await uploadImage(selectedFile, 'image', tournamentId ? 'tournament-payment-bills' : 'payment-bills');
+      console.log('✅ [VietQR] File uploaded:', billUrl);
       
       // Send to backend - khác endpoint cho tournament vs booking
       const endpoint = tournamentId 
         ? `http://localhost:8000/api/tournaments/${tournamentId}/upload-payment-proof`
         : `http://localhost:8000/api/books/${bookingId}/upload-payment-proof`;
+      
+      console.log('📤 [VietQR] Posting to backend:', {
+        endpoint,
+        bookingId,
+        tournamentId,
+        billUrl,
+      });
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -205,16 +215,42 @@ const VietQRPayment: React.FC<VietQRPaymentProps> = ({
         })
       });
 
+      console.log('📥 [VietQR] Backend response status:', response.status, response.statusText);
       const data = await response.json();
+      console.log('📥 [VietQR] Backend response data:', data);
 
-      if (data.success || response.ok) {
-        setStatus('waiting_confirm');
-        startPolling();
+      if (response.ok && (data.success !== false)) {
+        console.log('✅ [VietQR] Upload successful');
+        
+        // Show success message and close dialog
+        if (onSuccess) {
+          onSuccess({
+            booking_id: bookingId,
+            tournament_id: tournamentId,
+            payment_status: 'pending', // Đang chờ owner xác nhận
+            payment_proof: billUrl,
+          } as any);
+        }
+        
+        // Close dialog
+        handleCancel();
       } else {
-        setError(data.message || 'Không thể upload bill');
+        const errorMsg = data.message || data.error || 'Không thể upload bill';
+        console.error('❌ [VietQR] Upload failed:', errorMsg);
+        setError(errorMsg);
+        
+        if (onError) {
+          onError(errorMsg);
+        }
       }
     } catch (err: any) {
-      setError(err.message || 'Có lỗi xảy ra khi upload bill');
+      console.error('❌ [VietQR] Exception:', err);
+      const errorMsg = err.message || 'Có lỗi xảy ra khi upload bill';
+      setError(errorMsg);
+      
+      if (onError) {
+        onError(errorMsg);
+      }
     } finally {
       setUploading(false);
     }

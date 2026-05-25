@@ -51,6 +51,11 @@ const OwnerPayments = () => {
     });
   };
 
+  // Helper: Check if payment method requires bill/proof
+  const requiresPaymentProof = (paymentMethod?: string): boolean => {
+    return paymentMethod === 'transfer' || paymentMethod === 'vietqr';
+  };
+
   // Group payments: tournament bookings by tournament_id, regular stays as-is
   const groupPayments = (list: PendingPayment[]) => {
     const regular: PendingPayment[] = [];
@@ -118,8 +123,8 @@ const OwnerPayments = () => {
       filtered = filtered.filter(b => {
         const isPending = b.payment_status === 'pending' || !b.payment_status;
         
-        // Transfer: Đã upload bill và chưa xác nhận
-        if (b.payment_method === 'transfer') {
+        // Transfer/VietQR: Đã upload bill và chưa xác nhận
+        if (requiresPaymentProof(b.payment_method)) {
           return isPending && b.payment_proof_url;
         }
         
@@ -136,14 +141,14 @@ const OwnerPayments = () => {
         return false;
       });
     } else if (activeTab === 'not-paid') {
-      // Chưa thanh toán (chỉ transfer chưa upload bill)
+      // Chưa thanh toán (chỉ transfer/vietqr chưa upload bill)
       filtered = filtered.filter(b => 
-        b.payment_method === 'transfer' &&
+        requiresPaymentProof(b.payment_method) &&
         (b.payment_status === 'pending' || !b.payment_status) &&
         !b.payment_proof_url
       );
     } else if (activeTab === 'paid') {
-      // Đã thanh toán (cả transfer và cash)
+      // Đã thanh toán (cả transfer/vietqr và cash)
       filtered = filtered.filter(b => b.payment_status === 'paid');
     }
 
@@ -457,7 +462,7 @@ const OwnerPayments = () => {
                   Chờ xác nhận ({allBookings.filter(b => {
                     const isPending = b.payment_status === 'pending' || !b.payment_status;
                     return isPending && (
-                      (b.payment_method === 'transfer' && b.payment_proof_url) ||
+                      (requiresPaymentProof(b.payment_method) && b.payment_proof_url) ||
                       b.payment_method === 'cash' ||
                       b.booking_type === 'tournament'
                     );
@@ -465,7 +470,7 @@ const OwnerPayments = () => {
                 </TabsTrigger>
                 <TabsTrigger value="not-paid">
                   Chưa upload ({allBookings.filter(b => 
-                    b.payment_method === 'transfer' && 
+                    requiresPaymentProof(b.payment_method) && 
                     (b.payment_status === 'pending' || !b.payment_status) && 
                     !b.payment_proof_url
                   ).length})
@@ -594,7 +599,7 @@ const OwnerPayments = () => {
                                 </div>
                               )}
 
-                              {firstBooking.payment_method === 'transfer' && firstBooking.payment_proof_url && (
+                              {requiresPaymentProof(firstBooking.payment_method) && firstBooking.payment_proof_url && (
                                 <Alert className="bg-blue-50 border-blue-200 mb-4">
                                   <ImageIcon className="h-4 w-4 text-blue-600" />
                                   <AlertDescription className="text-sm text-blue-800">Khách hàng đã upload chứng từ thanh toán</AlertDescription>
@@ -611,7 +616,7 @@ const OwnerPayments = () => {
                               <div className="flex gap-2">
                                 {needConfirm && (
                                   <>
-                                    {firstBooking.payment_method === 'transfer' && firstBooking.payment_proof_url && (
+                                    {requiresPaymentProof(firstBooking.payment_method) && firstBooking.payment_proof_url && (
                                       <Button variant="outline" size="sm" onClick={() => handleViewTournamentProof(group)}>
                                         <Eye className="w-4 h-4 mr-2" />Xem chứng từ
                                       </Button>
@@ -629,7 +634,7 @@ const OwnerPayments = () => {
                                     </Button>
                                   </>
                                 )}
-                                {isPaid && firstBooking.payment_method === 'transfer' && firstBooking.payment_proof_url && (
+                                {isPaid && requiresPaymentProof(firstBooking.payment_method) && firstBooking.payment_proof_url && (
                                   <Button variant="outline" size="sm" onClick={() => handleViewTournamentProof(group)}>
                                     <Eye className="w-4 h-4 mr-2" />Xem chứng từ đã xác nhận
                                   </Button>
@@ -644,10 +649,10 @@ const OwnerPayments = () => {
                       regular.forEach((payment) => {
                         const isPending = payment.payment_status === 'pending' || !payment.payment_status;
                         const needConfirm = isPending && (
-                          (payment.payment_method === 'transfer' && payment.payment_proof_url) ||
+                          (requiresPaymentProof(payment.payment_method) && payment.payment_proof_url) ||
                           payment.payment_method === 'cash'
                         );
-                        const notUploaded = payment.payment_method === 'transfer' && isPending && !payment.payment_proof_url;
+                        const notUploaded = requiresPaymentProof(payment.payment_method) && isPending && !payment.payment_proof_url;
                         const isPaid = payment.payment_status === 'paid';
                         const borderColor = needConfirm ? 'border-l-orange-400' : isPaid ? 'border-l-green-400' : 'border-l-gray-300';
 
@@ -699,7 +704,7 @@ const OwnerPayments = () => {
                                 <span className="text-xl font-bold text-primary">{formatCurrency(payment.total_price)}</span>
                               </div>
 
-                              {payment.payment_method === 'transfer' && payment.payment_proof_url && (
+                              {requiresPaymentProof(payment.payment_method) && payment.payment_proof_url && (
                                 <Alert className="bg-blue-50 border-blue-200 mb-4"><ImageIcon className="h-4 w-4 text-blue-600" /><AlertDescription className="text-sm text-blue-800">Khách hàng đã upload chứng từ thanh toán</AlertDescription></Alert>
                               )}
                               {payment.payment_method === 'cash' && (
@@ -709,7 +714,7 @@ const OwnerPayments = () => {
                               <div className="flex gap-2">
                                 {needConfirm && (
                                   <>
-                                    {payment.payment_method === 'transfer' && payment.payment_proof_url && (
+                                    {requiresPaymentProof(payment.payment_method) && payment.payment_proof_url && (
                                       <Button variant="outline" size="sm" onClick={() => handleViewProof(payment)}><Eye className="w-4 h-4 mr-2" />Xem chứng từ</Button>
                                     )}
                                     <Button variant="default" size="sm" onClick={() => handleOpenConfirm(payment, 'approve')} className="bg-green-600 hover:bg-green-700">
@@ -723,7 +728,7 @@ const OwnerPayments = () => {
                                 {notUploaded && (
                                   <Alert className="bg-gray-50 border-gray-200 w-full"><Clock className="h-4 w-4 text-gray-600" /><AlertDescription className="text-sm text-gray-700">Đang chờ khách hàng upload chứng từ thanh toán</AlertDescription></Alert>
                                 )}
-                                {isPaid && payment.payment_method === 'transfer' && payment.payment_proof_url && (
+                                {isPaid && requiresPaymentProof(payment.payment_method) && payment.payment_proof_url && (
                                   <Button variant="outline" size="sm" onClick={() => handleViewProof(payment)}><Eye className="w-4 h-4 mr-2" />Xem chứng từ đã xác nhận</Button>
                                 )}
                               </div>

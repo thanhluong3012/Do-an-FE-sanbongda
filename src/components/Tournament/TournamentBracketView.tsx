@@ -120,6 +120,12 @@ export const TournamentBracketView = ({
   const [editMatchDate, setEditMatchDate] = useState('');
   const [editMatchTime, setEditMatchTime] = useState('');
 
+  const selectedFieldLabel = useMemo(() => {
+    const field = availableFields.find((f) => f.id === selectedFieldId);
+    if (!field) return '';
+    return `Sân ${field.field_type}${field.name ? ` - ${field.name}` : ''}`;
+  }, [availableFields, selectedFieldId]);
+
   useEffect(() => {
     loadAll();
   }, [tournamentId]);
@@ -335,12 +341,16 @@ export const TournamentBracketView = ({
     setSelectedFieldId(m.field_id ?? null);
     try {
       const bookings = await tournamentService.getFieldBookings(tournamentId);
-      setAvailableFields(bookings.map((b: any) => ({
+      const fields = bookings.map((b: any) => ({
         id: b.field.id,
         name: b.field.name,
         field_type: b.field.field_type,
-        field_cluster: b.field.field_cluster
-      })));
+        field_cluster: b.field.field_cluster,
+      }));
+      const uniqueFields = Array.from(
+        new Map(fields.map((field) => [field.id, field])).values()
+      );
+      setAvailableFields(uniqueFields);
     } catch (err) {
       if (m.field) setAvailableFields([{
         id: m.field.id,
@@ -700,21 +710,16 @@ export const TournamentBracketView = ({
                 onValueChange={(val) => setSelectedFieldId(Number(val))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Chọn sân" />
+                  <SelectValue placeholder="Chọn sân">{selectedFieldLabel}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {availableFields.map((f) => (
-                    <SelectItem key={f.id} value={f.id.toString()}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">
-                          Sân {f.field_type} {f.name ? `- ${f.name}` : ''}
-                        </span>
-                        {f.field_cluster && (
-                          <span className="text-xs text-muted-foreground">
-                            {f.field_cluster.name}
-                          </span>
-                        )}
-                      </div>
+                    <SelectItem
+                      key={f.id}
+                      value={f.id.toString()}
+                      description={f.field_cluster?.name}
+                    >
+                      Sân {f.field_type} {f.name ? `- ${f.name}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -694,7 +694,7 @@ export const TournamentFormDialog = ({
                 </Label>
                 <Select
                   value={formData.payment_method}
-                  onValueChange={(value: 'cash' | 'transfer') => 
+                  onValueChange={(value: 'cash' | 'vietqr') => 
                     setFormData({ ...formData, payment_method: value })
                   }
                 >
@@ -703,7 +703,7 @@ export const TournamentFormDialog = ({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cash">💵 Tiền mặt tại sân</SelectItem>
-                    <SelectItem value="transfer">🏦 Chuyển khoản</SelectItem>
+                    <SelectItem value="vietqr">🏦 Chuyển khoản</SelectItem>
                   </SelectContent>
                 </Select>
                 {formData.payment_method === 'cash' && (
@@ -714,7 +714,7 @@ export const TournamentFormDialog = ({
                     </AlertDescription>
                   </Alert>
                 )}
-                {formData.payment_method === 'transfer' && (
+                {formData.payment_method === 'vietqr' && (
                   <Alert className="mt-2 bg-amber-50 border-amber-200">
                     <Info className="h-4 w-4 text-amber-600" />
                     <AlertDescription className="text-xs text-amber-700">

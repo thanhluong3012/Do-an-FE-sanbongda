@@ -301,7 +301,7 @@ const MyTournaments = () => {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-medium">Thanh toán:</span>
                               <Badge variant="outline" className="text-xs">
-                                {tournament.payment_method === 'transfer' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
+                                {tournament.payment_method === 'vietqr' ? '🏦 Chuyển khoản' : '💵 Tiền mặt'}
                               </Badge>
                               {getPaymentStatusBadge(tournament.payment_status)}
                             </div>

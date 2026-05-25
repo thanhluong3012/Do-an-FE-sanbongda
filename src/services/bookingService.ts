@@ -488,8 +488,8 @@ export const bookingService = {
         data: response.data?.data || response.data,
       };
     } catch (error: any) {
-      console.error('❌ Error fetching payment info:', error);
-      console.error('❌ Error response:', error.response?.data);
+      console.error(' Error fetching payment info:', error);
+      console.error(' Error response:', error.response?.data);
       
       return {
         success: false,
