@@ -66,6 +66,7 @@ export const GroupStandingsTable = ({ standings, groupName }: GroupStandingsTabl
                 <TableHead className="text-center">BT</TableHead>
                 <TableHead className="text-center">BB</TableHead>
                 <TableHead className="text-center">HS</TableHead>
+                <TableHead className="text-center">Fair-play</TableHead>
                 <TableHead className="text-center font-bold">Điểm</TableHead>
               </TableRow>
             </TableHeader>
@@ -103,6 +104,19 @@ export const GroupStandingsTable = ({ standings, groupName }: GroupStandingsTabl
                     <span className={standing.goal_difference >= 0 ? 'text-green-600' : 'text-red-600'}>
                       {standing.goal_difference >= 0 ? '+' : ''}{standing.goal_difference}
                     </span>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {(() => {
+                      const fairPlayValue = standing.fair_play ?? (standing as any).fair_play_points;
+                      return (
+                        <span className={
+                          fairPlayValue === undefined ? 'text-muted-foreground' :
+                          fairPlayValue <= 1 ? 'text-green-600' : fairPlayValue <= 3 ? 'text-amber-600' : 'text-red-600'
+                        }>
+                          {fairPlayValue === undefined ? '-' : fairPlayValue}
+                        </span>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge variant="default" className="font-bold">

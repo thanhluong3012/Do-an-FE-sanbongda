@@ -7,6 +7,7 @@ interface StandingRow {
     id: number;
     ranking: number;
     team_id: number;
+    fair_play?: number;
     matches_played: number;
     wins: number;
     draws: number;
@@ -39,6 +40,7 @@ export const StandingsTable = ({ standings, highlightTeamId, onTeamClick }: Stan
                         <TableHead className="text-center w-14">H</TableHead>
                         <TableHead className="text-center w-14">B</TableHead>
                         <TableHead className="text-center w-16">Hiệu số</TableHead>
+                        <TableHead className="text-center w-16">Fair-play</TableHead>
                         <TableHead className="text-center w-16 font-bold">Điểm</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -100,6 +102,21 @@ export const StandingsTable = ({ standings, highlightTeamId, onTeamClick }: Stan
                                             {s.goal_difference > 0 ? '+' : ''}{s.goal_difference}
                                         </span>
                                     </div>
+                                </TableCell>
+
+                                {/* Fair-play */}
+                                <TableCell className="text-center tabular-nums">
+                                    {(() => {
+                                        const fairPlayValue = s.fair_play ?? (s as any).fair_play_points;
+                                        return (
+                                            <span className={
+                                                fairPlayValue === undefined ? 'text-muted-foreground' :
+                                                fairPlayValue <= 1 ? 'text-green-600' : fairPlayValue <= 3 ? 'text-amber-600' : 'text-red-600'
+                                            }>
+                                                {fairPlayValue === undefined ? '-' : fairPlayValue}
+                                            </span>
+                                        );
+                                    })()}
                                 </TableCell>
 
                                 {/* Points */}

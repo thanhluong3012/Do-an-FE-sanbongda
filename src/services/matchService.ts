@@ -14,6 +14,8 @@ export interface Match {
   field_id?: number;
   home_score?: number | null;
   away_score?: number | null;
+  home_penalty_score?: number | null;
+  away_penalty_score?: number | null;
   winner_id?: number | null;
   status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
   home_from_position?: string; // For knockout brackets (e.g., "Thắng trận 1")
@@ -52,6 +54,8 @@ export interface Match {
     id: number;
     name: string;
   };
+  home_penalties?: { player_id: number; card_type: 'yellow' | 'red' }[];
+  away_penalties?: { player_id: number; card_type: 'yellow' | 'red' }[];
   created_at?: string;
   updated_at?: string;
 }
@@ -75,6 +79,9 @@ export interface ScoreUpdateRequest {
   home_penalty_score?: number;
   away_penalty_score?: number;
   status: 'completed' | 'in_progress';
+  // Optional fair-play / card penalties payload
+  home_penalties?: { player_id: number; card_type: 'yellow' | 'red' }[];
+  away_penalties?: { player_id: number; card_type: 'yellow' | 'red' }[];
 }
 
 // Interface cho API Response
@@ -129,7 +136,21 @@ export const matchService = {
   // Cập nhật tỷ số (Admin/BTC) - QUAN TRỌNG
   updateScore: async (id: number, data: ScoreUpdateRequest): Promise<Match> => {
     try {
+      console.log('=== MATCH SERVICE: updateScore ===');
+      console.log('Match ID:', id);
+      console.log('Request data:', data);
+      console.log('home_penalties:', data.home_penalties);
+      console.log('away_penalties:', data.away_penalties);
+      console.log('==================================');
+      
       const response = await api.put<ApiResponse<Match>>(`/tournament-matches/${id}/update-score`, data);
+      
+      console.log('=== API RESPONSE ===');
+      console.log('Response data:', response.data.data);
+      console.log('Response home_penalties:', response.data.data.home_penalties);
+      console.log('Response away_penalties:', response.data.data.away_penalties);
+      console.log('====================');
+      
       return response.data.data;
     } catch (error) {
       console.error(`Error updating match score ${id}:`, error);

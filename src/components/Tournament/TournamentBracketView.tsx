@@ -16,6 +16,7 @@ import {
 import { Match, matchService } from '@/services/matchService';
 import { tournamentService, TournamentBracket } from '@/services/tournamentService';
 import { UpdateScoreDialog } from '@/components/Match/UpdateScoreDialog';
+import { ScoreUpdateRequest } from '@/services/matchService';
 import { GroupView } from './GroupView';
 import { KnockoutView } from './KnockoutView';
 import { MatchCard } from './MatchCard';
@@ -313,7 +314,7 @@ export const TournamentBracketView = ({
     setScoreDialogOpen(true);
   };
 
-  const handleScoreSubmit = async (data: { home_score: number; away_score: number; status: 'completed' | 'in_progress' }) => {
+  const handleScoreSubmit = async (data: ScoreUpdateRequest) => {
     if (!scoreMatch) return;
     try {
       await matchService.updateScore(scoreMatch.id, data);
@@ -690,6 +691,8 @@ export const TournamentBracketView = ({
           onSubmit={handleScoreSubmit}
           homeTeamName={scoreMatch.home_team?.name ?? scoreMatch.home_from_position ?? 'Home'}
           awayTeamName={scoreMatch.away_team?.name ?? scoreMatch.away_from_position ?? 'Away'}
+          homeTeamId={scoreMatch.home_team?.id ?? null}
+          awayTeamId={scoreMatch.away_team?.id ?? null}
         />
       )}
 

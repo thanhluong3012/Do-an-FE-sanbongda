@@ -13,12 +13,20 @@ export interface TournamentGroup {
   id: number;
   group_name: string;
   standings?: Array<{
+    id?: number;
     ranking: number;
+    team_id?: number;
     team: { id: number; name: string; logo?: string };
     points?: number;
     wins?: number;
     draws?: number;
     losses?: number;
+    matches_played?: number;
+    goals_for?: number;
+    goals_against?: number;
+    goal_difference?: number;
+    fair_play_points?: number; // Card penalty points (higher = more cards = worse)
+    fair_play?: number; // Backward compatibility
   }>;
   matches: Match[];
 }
@@ -401,6 +409,18 @@ export const tournamentService = {
       
       const response = await api.get(endpoint);
       const raw = response.data;
+      
+      console.log('=== BRACKET API RESPONSE ===');
+      console.log('Raw response:', raw);
+      if (raw?.data?.groups?.[0]?.standings?.[0]) {
+        const firstStanding = raw.data.groups[0].standings[0];
+        console.log('First group first standing:', firstStanding);
+        console.log('Has fair_play?', 'fair_play' in firstStanding);
+        console.log('Has fair_play_points?', 'fair_play_points' in firstStanding);
+        console.log('fair_play_points value:', firstStanding?.fair_play_points);
+      }
+      console.log('============================');
+      
       // Format: { success: true, data: { tournament, rounds, groups, matches, teams } }
       if (raw?.data) {
         return raw.data;

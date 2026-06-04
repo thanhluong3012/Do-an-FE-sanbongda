@@ -647,7 +647,16 @@ export default function CreateTournament() {
       console.error('Full Error:', error);
       
       // Hiển thị lỗi chi tiết
-      const errorMessage = error.response?.data?.message || 'Có lỗi xảy ra khi tạo giải đấu';
+      const rawMessage = error.response?.data?.message || '';
+
+      const isDuplicateBookingError =
+        rawMessage.includes('SQLSTATE[23000]') ||
+        rawMessage.includes('1062 Duplicate entry') ||
+        rawMessage.includes('unique_field_day_start');
+
+      const errorMessage = isDuplicateBookingError
+        ? 'Khung giờ này đã có người đặt. Vui lòng chọn khung giờ khác.'
+        : rawMessage || 'Có lỗi xảy ra khi tạo giải đấu';
       const errorDetails = error.response?.data?.errors 
         ? Object.entries(error.response.data.errors)
             .map(([field, messages]: [string, any]) => `${field}: ${Array.isArray(messages) ? messages.join(', ') : messages}`)

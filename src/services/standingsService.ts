@@ -13,6 +13,7 @@ export interface GroupStanding {
   goals_for: number;
   goals_against: number;
   goal_difference: number;
+  fair_play?: number; // lower is better
   points: number;
   rank: number;
   team?: {

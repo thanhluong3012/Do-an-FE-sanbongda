@@ -25,6 +25,7 @@ import { RegistrationFormDialog } from '@/components/Registration/RegistrationFo
 import { RegistrationList } from '@/components/Registration/RegistrationList';
 import { MatchCard } from '@/components/Match/MatchCard';
 import { UpdateScoreDialog } from '@/components/Match/UpdateScoreDialog';
+import { ScoreUpdateRequest } from '@/services/matchService';
 import { GroupStandingsTable } from '@/components/Standings/GroupStandingsTable';
 import { ScheduleBuilder } from '@/components/Match/ScheduleBuilder';
 import { PaymentInfoCard } from '@/components/Tournament/PaymentInfoCard';
@@ -238,6 +239,7 @@ const TournamentDetail = () => {
             goals_against: (s as any).goals_against ?? 0,
             goal_difference: (s as any).goal_difference ?? 0,
             points: s.points ?? 0,
+            fair_play: (s as any).fair_play_points ?? (s as any).fair_play,
             rank: s.ranking ?? 0,
             team: s.team ? { id: s.team.id, name: s.team.name, logo: s.team.logo } : undefined,
             group: { id: group.id, name: group.group_name },
@@ -245,6 +247,16 @@ const TournamentDetail = () => {
         }
       }
     }
+    
+    console.log('=== STANDINGS DERIVED FROM BRACKET ===');
+    console.log('Bracket groups:', bracket.groups);
+    console.log('Result standings with fair_play_points:', result);
+    if (result.length > 0) {
+      console.log('First standing sample:', result[0]);
+      console.log('Fair play points from first standing:', result[0].fair_play);
+    }
+    console.log('=====================================');
+    
     return result;
   }, [bracket]);
 
@@ -541,7 +553,7 @@ const TournamentDetail = () => {
     setIsScoreDialogOpen(true);
   };
 
-  const handleUpdateScore = async (data: { home_score: number; away_score: number; status: 'completed' | 'in_progress' }) => {
+  const handleUpdateScore = async (data: ScoreUpdateRequest) => {
     if (!selectedMatch) return;
     try {
       await matchService.updateScore(selectedMatch.id, data);
@@ -1404,6 +1416,8 @@ const TournamentDetail = () => {
           onSubmit={handleUpdateScore}
           homeTeamName={selectedMatch.home_team?.name || 'Home'}
           awayTeamName={selectedMatch.away_team?.name || 'Away'}
+          homeTeamId={selectedMatch.home_team?.id ?? null}
+          awayTeamId={selectedMatch.away_team?.id ?? null}
         />
       )}
 
